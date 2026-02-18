@@ -1,6 +1,7 @@
 --[[
     Fair Dunc Lab v4.5
     Universal UNC & Behavior Tests
+    - Fake / Stub Detection
 ]]
 
 local Players = game:GetService("Players")
@@ -10,7 +11,7 @@ local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 
 local CONFIG = {
-    TITLE           = "Fair Dunc Lab v4.5",
+    TITLE           = "Fair Dunc Lab",
     TEST_FILE       = "_dunc_lab_test.txt",
     TEST_FILE_2     = "_dunc_lab_append.txt",
     LIST_FOLDER     = "_dunc_lab_test_list",
@@ -73,6 +74,20 @@ local Aliases = {
     keypress = {},
     queue_on_teleport = {"queue_teleport", "queueonteleport"},
     getfpscap = {},
+    -- aliases
+    ["debug.getconstant"]  = {},
+    ["debug.getconstants"] = {},
+    ["debug.getupvalue"]   = {},
+    ["debug.setupvalue"]   = {},
+    ["debug.setconstant"]  = {},
+    ["debug.getstack"]     = {},
+    ["debug.setstack"]     = {},
+    ["debug.getprotos"]    = {},
+    ["debug.getproto"]     = {},
+    getconnections         = {},
+    getrunningscripts      = {"getscripts"},
+    saveinstance           = {},
+    ["Drawing.new"]        = {},
 }
 
 local function resolve(name)
@@ -82,12 +97,12 @@ local function resolve(name)
     if name == "game:HttpPost" then return function(url, data) return game:HttpPost(url, data) end end
 
     local res = deep_index(env, name)
-    if res then return res end
+    if res ~= nil then return res end
 
     if Aliases[name] then
         for _, alias in ipairs(Aliases[name]) do
             res = deep_index(env, alias)
-            if res then return res end
+            if res ~= nil then return res end
         end
     end
 
@@ -142,7 +157,7 @@ end
 local function test(name, callback)
     task.wait()
     local func = resolve(name)
-    if not func then
+    if func == nil then
         record(name, "MISSING")
         return
     end
@@ -155,7 +170,18 @@ local function test(name, callback)
     end
 end
 
--- Categories
+local function testRaw(name, callback)
+    task.wait()
+    local s, e = pcall(callback)
+    if s then
+        record(name, "PASS")
+    else
+        record(name, "FAIL", e)
+    end
+end
+
+-- Standard Tests
+
 
 local function run_Environment()
     Lab.CurrentCategory = "Environment"
@@ -179,9 +205,36 @@ local function run_Environment()
         local wf = resolve("writefile")
         if not wf then error("Requires writefile") end
         wf("test_asset.txt", "data")
+        task.wait(0.1)
         local uri = f("test_asset.txt")
         assert(type(uri) == "string", "Invalid return")
         assert(string.match(uri, "rbxasset"), "Not an asset URI")
+    end)
+
+    testRaw("getrunningscripts check", function()
+        local f = resolve("getrunningscripts")
+        if not f then
+            record("getrunningscripts check", "MISSING")
+            return
+        end
+
+        local scripts = f()
+        assert(type(scripts) == "table", "not a table")
+
+        local t0 = os.clock()
+        for _ = 1, 10 do f() end
+        local elapsed = os.clock() - t0
+
+        if elapsed > 0.25 then
+            error(string.format("10 calls took %.3fs", elapsed))
+        end
+
+        for _, s in ipairs(scripts) do
+            assert(typeof(s) == "Instance",
+                "Entry is " .. typeof(s) .. ", expected Instance")
+            assert(s:IsA("LuaSourceContainer"),
+                "Entry is " .. s.ClassName .. ", not a script class")
+        end
     end)
 end
 
@@ -219,6 +272,8 @@ local function run_Closures()
     test("hookfunction", function(f)
         local old = f(warn, function(...) return "hooked" end)
         assert(type(old) == "function", "Did not return original")
+        local result = warn("test")
+        assert(result == "hooked", "Hook did not take effect")
         f(warn, old)
     end)
 
@@ -255,10 +310,11 @@ local function run_FileSystem()
         if not wf then error("Requires writefile") end
         wf(CONFIG.TEST_FILE_2, "_append")
         f(CONFIG.TEST_FILE_2, "_data")
-        local rf = resolve("readfile")
         if rf then
             local d = rf(CONFIG.TEST_FILE_2)
             assert(d == "_append_data", "Append failed: got '" .. tostring(d) .. "'")
+        else
+            error("Requires readfile to verify")
         end
     end)
 
@@ -316,6 +372,8 @@ local function run_FileSystem()
         mf(CONFIG.LIST_FOLDER)
         wf(CONFIG.LIST_FOLDER .. "/test1.txt", "1")
         local list = f(CONFIG.LIST_FOLDER)
+        pcall(resolve("delfile"), CONFIG.LIST_FOLDER .. "/test1.txt")
+        
         assert(type(list) == "table", "Did not return table")
         assert(#list > 0, "No files listed")
     end)
@@ -384,14 +442,16 @@ local function run_LabInteraction()
     local lab = workspace:WaitForChild("FairDuncLab", 2)
 
     if not lab then
-        warn("  [!] Lab map missing skipping interaction tests")
+        warn("  [!] Lab map missing — skipping interaction tests")
         return
     end
 
     test("fireclickdetector", function(f)
         local part = lab:WaitForChild("ClickTestPart", 3)
         if not part then error("ClickTestPart missing") end
-        f(part.ClickDetector)
+        local cd = part:FindFirstChildOfClass("ClickDetector")
+        if not cd then error("ClickDetector child missing") end
+        f(cd)
         task.wait(CONFIG.LAB_WAIT)
         assert(part.BrickColor == BrickColor.new("Lime green"), "Visual feedback missing")
     end)
@@ -399,7 +459,9 @@ local function run_LabInteraction()
     test("fireproximityprompt", function(f)
         local part = lab:WaitForChild("PromptTestPart", 3)
         if not part then error("PromptTestPart missing") end
-        f(part.ProximityPrompt)
+        local pp = part:FindFirstChildOfClass("ProximityPrompt")
+        if not pp then error("ProximityPrompt child missing") end
+        f(pp)
         task.wait(CONFIG.LAB_WAIT)
         assert(part.BrickColor == BrickColor.new("Cyan"), "Visual feedback missing")
     end)
@@ -442,11 +504,13 @@ local function run_Crypt()
     test("crypt.encrypt", function(f)
         local gk = resolve("crypt.generatekey")
         local gd = resolve("crypt.decrypt")
+        local gb = resolve("crypt.generatebytes")
         if not gk or not gd then error("Deps missing") end
 
         local key = gk()
-        local data = f("test", key)
-        local dec = gd(data, key)
+        local iv = gb and gb(16) or nil
+        local data = f("test", key, iv, "CBC")
+        local dec = gd(data, key, iv, "CBC")
         assert(dec == "test", "Round trip fail")
     end)
 
@@ -467,9 +531,14 @@ local function run_Drawing()
 
     test("Drawing.new", function(f)
         local l = f("Line")
-        assert(type(l) == "table" or type(l) == "userdata", "Invalid drawing object type: " .. type(l))
-        l.Visible = false
-        l:Remove()
+        assert(l ~= nil, "Returned nil")
+        
+        if type(l) == "table" then
+             l.Visible = false
+             if l.Remove then l:Remove() end
+        elseif type(l) == "userdata" then
+             pcall(function() l.Visible = false; l:Remove() end)
+        end
     end)
 
     test("Drawing.Fonts", function(f)
@@ -498,6 +567,47 @@ local function run_Drawing()
     test("cleardrawcache", function(f)
         f()
     end)
+
+    testRaw("Drawing.new polyfill check", function()
+        local dn = resolve("Drawing.new")
+        if not dn then 
+            record("Drawing.new polyfill check", "MISSING")
+            return 
+        end
+
+        local coreGui = game:GetService("CoreGui")
+        local before = #coreGui:GetChildren()
+
+        local obj = dn("Line")
+        if not obj then return end
+        
+        pcall(function() obj.Visible = true end)
+        task.wait()
+
+        local after = #coreGui:GetChildren()
+        
+        local isTable = (type(obj) == "table")
+        local hasInstance = false
+        if isTable then
+             for k, v in pairs(obj) do
+                if typeof(v) == "Instance" then
+                    hasInstance = true
+                    break
+                end
+            end
+        end
+
+        pcall(function() obj:Remove() end)
+
+        local errs = {}
+        if isTable then table.insert(errs, "returns table instead of userdata") end
+        if hasInstance then table.insert(errs, "stores Roblox Instance refs") end
+        if after > before then table.insert(errs, "adds children to CoreGui (ScreenGui-based)") end
+
+        if #errs > 0 then
+            error("Polyfill detected: " .. table.concat(errs, "; "))
+        end
+    end)
 end
 
 local function run_Debug()
@@ -521,6 +631,242 @@ local function run_Debug()
         local info = f(print)
         assert(type(info) == "table", "Did not return table")
         assert(info.what == "C", "print should be C")
+    end)
+
+    -- Extra Debug Consistency Checks
+    testRaw("debug.getconstant consistency", function()
+        local f = resolve("debug.getconstant")
+        if not f then 
+            record("debug.getconstant consistency", "MISSING")
+            return 
+        end
+
+        local function probe()
+            local _a = "DUNC_UNIQUE_CONST"
+            local _b = 314159
+            return _a, _b
+        end
+
+        local c1 = f(probe, 1)
+        if c1 == "print" then
+            error("Returned hardcoded 'print' – ignores actual constants")
+        end
+        local found = false
+        for i = 1, 5 do
+            local v = f(probe, i)
+            if v == "DUNC_UNIQUE_CONST" or v == 314159 then found = true break end
+        end
+        assert(found, "None of the returned constants match the real function body")
+        
+        -- Input independence check
+        local function funcA() local _ = "AAA_CONST" return 1 end
+        local function funcB() local _ = "BBB_CONST" return 2 end
+        local a1 = f(funcA, 1)
+        local b1 = f(funcB, 1)
+        if a1 == b1 then
+             error("Returns identical constant '"..tostring(a1).."' for different functions")
+        end
+    end)
+
+    testRaw("debug.getconstants consistency", function()
+        local f = resolve("debug.getconstants")
+        if not f then 
+            record("debug.getconstants consistency", "MISSING")
+            return 
+        end
+
+        local function probe()
+            local _x = "DUNC_CONST_ALPHA"
+            local _y = 271828
+            return _x, _y
+        end
+
+        local tbl = f(probe)
+        assert(type(tbl) == "table", "not a table")
+
+        for _, v in ipairs(tbl) do
+            if v == 50000 or v == "Hello, world!" then
+                error("Returned executor hardcoded set {50000,'print',nil,'Hello, world!','warn'}")
+            end
+        end
+
+        local foundReal = false
+        for _, v in ipairs(tbl) do
+            if v == "DUNC_CONST_ALPHA" or v == 271828 then foundReal = true break end
+        end
+        assert(foundReal, "Actual constants ('DUNC_CONST_ALPHA' / 271828) not present")
+    end)
+
+    testRaw("debug.getupvalue consistency", function()
+        local f = resolve("debug.getupvalue")
+        if not f then 
+            record("debug.getupvalue consistency", "MISSING")
+            return 
+        end
+
+        local sentinel = newproxy(false)
+        local function capture() return sentinel end
+
+        local v = f(capture, 1)
+        assert(v ~= nil, "Always returns nil regardless of upvalue")
+        assert(v == sentinel, "Returned wrong value (expected sentinel userdata)")
+    end)
+
+    testRaw("debug.get/setupvalue roundtrip", function()
+        local fget = resolve("debug.getupvalue")
+        local fset = resolve("debug.setupvalue")
+        if not fget or not fset then 
+            record("debug.get/setupvalue roundtrip", "MISSING")
+            return 
+        end
+
+        local a, b, c = 111, "hello", true
+        local function probe() return a, b, c end
+
+        fset(probe, 1, 222)
+        fset(probe, 2, "world")
+        fset(probe, 3, false)
+
+        local r1 = fget(probe, 1)
+        
+        if r1 == 111 then
+             error("setupvalue seems to be separate from getupvalue (value unchanged)")
+        end
+        
+        local v1, v2, v3 = probe()
+        assert(v1 == 222, "upvalues not modified")
+        assert(v2 == "world", "upvalue 2 not modified")
+        assert(v3 == false, "upvalue 3 not modified")
+    end)
+
+    testRaw("debug.setconstant consistency", function()
+        local fset = resolve("debug.setconstant")
+        local fget = resolve("debug.getconstants")
+        if not fset or not fget then 
+             record("debug.setconstant consistency", "MISSING")
+             return 
+        end
+
+        local function probe() return "SETCONST_ORIG" end
+        local consts = fget(probe)
+        local idx
+        for i, v in ipairs(consts) do
+            if v == "SETCONST_ORIG" then idx = i break end
+        end
+        
+        assert(idx, "Could not locate constant in probe function")
+        
+        fset(probe, idx, "SETCONST_NEW")
+        assert(probe() == "SETCONST_NEW", "Function execution did not reflect setconstant change")
+    end)
+
+    testRaw("debug.getstack consistency", function()
+        local f = resolve("debug.getstack")
+        if not f then 
+             record("debug.getstack consistency", "MISSING")
+             return 
+        end
+
+        local r1 = f(1)
+        
+        local function isAb(v)
+            if v == "ab" then return true end
+            if type(v) == "table" and #v == 1 and v[1] == "ab" then return true end
+            return false
+        end
+
+        if isAb(r1) then
+             local function deeper() return f(2) end
+             if isAb(deeper()) then
+                 error("Always returns 'ab'/{'ab'} regardless of level/index")
+             end
+        end
+    end)
+
+    testRaw("debug.setstack consistency", function()
+        local fset = resolve("debug.setstack")
+        local fget = resolve("debug.getstack")
+        if not fset or not fget then 
+             record("debug.setstack consistency", "MISSING")
+             return 
+        end
+
+        local before = fget(1, 1)
+        fset(1, 1, "DUNC_STACK_VAL")
+        local after = fget(1, 1)
+        
+        if before and after and before == after and after ~= "DUNC_STACK_VAL" then
+             error("Stack slot unchanged after setstack")
+        end
+    end)
+
+    testRaw("debug.getprotos consistency", function()
+        local f = resolve("debug.getprotos")
+        if not f then 
+             record("debug.getprotos consistency", "MISSING")
+             return 
+        end
+
+        local function outer()
+            local function inner1() return "I1" end
+            local function inner2() return "I2" end
+            return inner1, inner2
+        end
+
+        local protos = f(outer)
+        assert(type(protos) == "table", "not a table")
+        assert(#protos >= 2, "outer has 2 inner functions but got " .. #protos .. " protos")
+
+        for i, p in ipairs(protos) do
+            if type(p) == "table" then
+                 local mt = getmetatable(p)
+                 if mt and type(mt.__call) == "function" and p("xyz") == true then
+                      error("Proto["..i.."] is a dummy table whose __call always returns true")
+                 end
+                 error("Proto["..i.."] is a table, expected function")
+            end
+            assert(type(p) == "function", "Proto["..i.."] is "..type(p)..", expected function")
+        end
+    end)
+    
+    testRaw("debug.getproto consistency", function()
+        local f = resolve("debug.getproto")
+        if not f then 
+             record("debug.getproto consistency", "MISSING")
+             return 
+        end
+
+        local function outer()
+            local function unique() return "PROTO_REAL" end
+            return unique
+        end
+
+        local p = f(outer, 1)
+
+        if type(p) == "table" then
+             local mt = getmetatable(p)
+             if mt and (mt.__call or mt.__index) then
+                  local s, r = pcall(p)
+                  if s and r == true then
+                      error("Returned dummy table with __call→true instead of function")
+                  end
+             end
+             error("Returned table instead of function")
+        end
+        assert(p() == "PROTO_REAL", "proto returned wrong value")
+    end)
+    
+    testRaw("debug.getinfo accuracy", function()
+         local f = resolve("debug.getinfo")
+          if not f then 
+            record("debug.getinfo accuracy", "MISSING")
+            return 
+        end
+         local cInfo = f(print)
+         local lInfo = f(function() end)
+         if cInfo.what == lInfo.what then
+              error("Returns identical 'what' field ('"..tostring(cInfo.what).."') for both C and Lua functions")
+         end
     end)
 end
 
@@ -573,10 +919,19 @@ local function run_Thread()
 
     test("setthreadidentity", function(f)
         local gti = resolve("getthreadidentity")
-        local original = gti and gti() or nil
-        f(3)
-        if gti then assert(gti() == 3, "Identity not set") end
+        f(8)
+        if gti then assert(gti() == 8, "Identity not set to 8") end
+        
+        local realAccess = pcall(function()
+            local cg = game:GetService("CoreGui")
+            local _ = cg:GetChildren() 
+        end)
+        
         if original then f(original) end
+        
+        if not realAccess then
+             error("Identity set to 8 but failed to access CoreGui")
+        end
     end)
 end
 
@@ -597,6 +952,7 @@ local function run_Misc()
         local gfc = resolve("getfpscap")
         local original = gfc and gfc() or nil
         f(60)
+        if gfc then assert(gfc() == 60, "FPS cap not applied") end
         if original then f(original) end
     end)
 
@@ -609,9 +965,70 @@ local function run_Misc()
     end)
 
     test("queue_on_teleport", function(f) f('print("queued")') end)
+
+    testRaw("getconnections check", function()
+        local f = resolve("getconnections")
+        if not f then 
+            record("getconnections check", "MISSING")
+            return 
+        end
+
+        local be = Instance.new("BindableEvent")
+        local count = 0
+        local _c = be.Event:Connect(function() count += 1 end)
+        local conns = f(be.Event)
+        
+        if type(conns) ~= "table" or #conns == 0 then
+             be:Destroy()
+             error("No connections returned")
+        end
+        
+        local hasFunc = false
+        for _, conn in ipairs(conns) do
+            if conn.Function then hasFunc = true end
+        end
+        
+        if not hasFunc then
+             be:Destroy()
+             error("Function field is nil for local connection (should be visible)")
+        end
+        
+        if conns[1].Fire then
+             conns[1]:Fire() 
+             task.wait()
+             if count == 0 then
+                  be:Destroy()
+                  warn("    [!] getconnections: Fire() did not invoke handler")
+             end
+        end
+        be:Destroy()
+    end)
+
+    testRaw("saveinstance check", function()
+        local f = resolve("saveinstance")
+        if not f then 
+            record("saveinstance check", "MISSING")
+            return 
+        end
+        
+        local consts = resolve("debug.getconstants")
+        if consts then
+             local c = consts(f) 
+             if c then
+                for _, v in ipairs(c) do
+                    if type(v) == "string" and (string.find(v, "github") or string.find(v, "HttpGet")) then
+                         error("Depends on external HttpGet (found '"..v.."')")
+                    end
+                end
+             end
+        end
+    end)
 end
 
--- Main
+
+
+-- Entry Point
+
 
 local function main()
     Lab.StartTime = os.clock()
@@ -666,7 +1083,7 @@ local function main()
             print(string.format("  %-15s %s %3d%%", c, bar, pct))
         end
     end
-    print(string.rep("\u{2550}", 42) .. "\n")
+    print(string.rep("-", 42) .. "\n")
 
     updateServer("Done! Score: " .. score .. "%")
 
