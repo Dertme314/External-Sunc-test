@@ -22,7 +22,7 @@ Nezur's `getgenv` is weaponized to force-pass tests.
 
 ## 4. Interaction "Macros" (Fakes)
 Instead of hooking engine events, Nezur physically manipulates the game world to simulate interaction:
-*   **`fireclickdetector`**: Creates a temporary transparent part, **moves the camera** to face it, and uses `VirtualUser:ClickButton1`.
+*   **`fireclickdetector`**: Creates a temporary transparent part, **moves the camera** to face it, and uses `VirtualInputManager`.
 *   **`firetouchinterest`**: **Teleports** a temporary part to the target's location to trigger the physics engine's touch event.
 *   **`fireproximityprompt`**: Manipulates `MaxActivationDistance` to infinity, waits for `HoldDuration`, and calls `InputHoldBegin`/`End`.
 
@@ -39,3 +39,8 @@ Nezur's `debug` library is a suite of hardcoded mocks designed to satisfy specif
 ## 7. Execution & Decompilation
 *   **`loadstring`**: Compiles via bridge (`/compilable`), then clones `CoreGui` modules to execute the bytecode.
 *   **`decompile`**: Sends bytecode to an external API (`api.plusgiant5.com/konstant/decompile`). It has a built-in rate limit (0.5s).
+
+## 8. Conclusion
+**Overall Assessment: Bad / Fake**
+
+Nezur is a "Checklist Cheat." It is not designed to provide actual functionality but to explicitly trick vulnerability scanners (SUNC) into reporting a 100% score. It fakes assertions, rewrites console output, and hardcodes return values for debug functions. It is actively deceptive and functionally poor.

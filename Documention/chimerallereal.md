@@ -61,3 +61,8 @@ The `crypt` library is implemented entirely in Lua with weak or incorrect algori
 
 - **`setscriptbytecode`**
   - Uses `ObjectValue` transfer and bridge calls to manipulate script bytecode, a very non-native approach.
+
+## 7. Conclusion
+**Overall Assessment: Bad / Fake**
+
+ChimeraLle-Real relies entirely on Lua-level emulation for critical features. Its "crypt" library is insecure (XOR masquerading as AES), its drawing library is a detectable web-fetched script, and its instance management is a complex proxy system prone to identity issues. It is not a native environment.

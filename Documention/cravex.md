@@ -48,3 +48,8 @@ Cravex implements a heavy `proxyobject` wrapper system for Instances.
     *   Polyfilled via bridge polling (`websocket_poll`).
     *   Uses `BindableExample` for `OnMessage` and `OnClose`.
     *   Not a real async socket connection in the engine thread.
+
+## 9. Conclusion
+**Overall Assessment: Bad / Fake**
+
+Cravex is a bridge-reliant environment that fakes native input by physically moving the camera/parts ("macros") and uses a complex, unstable proxy system for Instances. Its reliance on `debug.loadmodule` hacks and X/OR encryption makes it a poor substitute for a real executor.

@@ -38,3 +38,8 @@ The `debug` library is almost entirely fake, returning hardcoded values to pass 
 
 ## 6. Service Wrappers ("Vuln Mitigation")
 Stellar wraps a massive list of services (e.g., `HttpRbxApiService`, `OpenCloudService`, `BrowserService`) in a proxy that errors when accessed. This is done to prevent malicious scripts from accessing sensitive engine features, but it is implemented in Lua (`newproxy`) rather than C++.
+
+## 7. Conclusion
+**Overall Assessment: Bad / Fake**
+
+Stellar is a "skid" environment composed of various public scripts and heavy mocking. It simulates specialized features (Drawing, WebSocket, Console) using standard Lua objects, often effectively breaking them or providing only visual illusions of functionality. It is not a serious execution environment.
