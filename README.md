@@ -21,39 +21,44 @@ This is where **senS** changed the game. Instead of just checking if a name exis
 ---
 
 ## How we catch the fakes
-We use a few "Fair" checks to make sure an executor isn't just lying to the script:
+We use deep behavioral checks to ensure an executor isn't just return-spoofing results:
 
-- **Round-Trips**: We write a random string to a file and immediately try to read it back. If they don't match, the executor is faking it.
-- **Identity Consistency**: We verify that tables like `getgenv()` are actually persistent and match themselves.
-- **Strict Return Types**: If `gethui()` is supposed to return an `Instance` but returns a string or nil, it's a fail.
-- **Restoration Tests**: For `hookfunction`, we don't just check if it hooks; we check if it can successfully restore the original function without crashing.
+- **Round-Trips**: For files and upvalues, we write/set a value and immediately try to read it back. If they don't match, the behavior is broken.
+- **Performance Benchmarks**: Some tests (like `getrunningscripts`) are benchmarked. A native implementation should be near-instant; if it takes too long, it's likely a slow Lua polyfill.
+- **Constant & Upvalue Integrity**: We verify that `debug` functions can actually find and modify unique constants and upvalues inside a probe function.
+- **Capability Checks**: For `setthreadidentity`, we don't just check the number; we verify if setting a high identity actually grants access to privileged services like `CoreGui`.
+- **Polyfill Detection**: Our `Drawing.new` test looks for telltale signs of Lua-based overlays, like adding instances to `CoreGui` or returning tables instead of userdata.
 
 ---
 
 ## The Reality of Externals
-Let's be real external executors have a harder time than DLLs. You're not going to see 100% on things like `hookmetamethod` or `getrawmetatable` on most externals because they're running in a totally different process.
+Let's be real: external executors have a harder time than DLLs. You're not going to see 100% on things like `hookmetamethod` or `getrawmetatable` on most externals because they're running in a totally different process.
 
-Dunc Lab is designed to be **Fair**. A 75% score on a solid external is worth way more than a "100% UNC" score on an executor that spools fake functions just to look good.
+Dunc Lab is designed to be **Fair**. A high score on a solid external is worth way more than a "100% UNC" score on an executor that spools fake functions just to look good.
 
 ---
 
-## What we're testing (v4.5)
+## What we're testing
 
 ### Environment & Closures
-Checking the basics: `getgenv`, `getrenv`, and `gethui`. We also run `loadstring` to make sure the Lua VM is behaving and use `checkcaller` to verify the execution context is actually isolated.
+Checking the basics: `getgenv`, `getrenv`, and `gethui`. We also run performance checks on `getrunningscripts` and use `checkcaller` to verify the execution context is actually isolated.
 
 ### FileSystem
-This is the bread and butter of externals. We test `writefile`, `readfile`, and `appendfile`. We also make sure `appendfile` actually *appends* instead of just overwriting everything.
+This is the bread and butter of externals. We test `writefile`, `readfile`, and `appendfile`, ensuring they persist correctly and handle data without corruption.
 
 ### Network & HttpService
-Verifying `request` and `game:HttpGet`. We hit live endpoints (like httpbin) to make sure the executor can actually talk to the internet and bring back usable data.
+Verifying `request` and `game:HttpGet`. We hit live endpoints to make sure the executor can actually talk to the internet and bring back usable data.
 
 ### Input Simulation
-Crucial for auto-farms. We test `keypress`, mouse clicks, and both absolute and relative mouse movement to ensure everything is responsive.
+Crucial for auto-farms. We test `keypress`, mouse clicks, and both absolute and relative mouse movement.
+
+### Debug & Metatable
+- **Debug**: Extensive consistency checks for `getconstants`, `getupvalues`, `getprotos`, and `getinfo`. We ensure the debug library actually interacts with the function's bytecode.
+- **Metatable**: Testing `getrawmetatable`, `setreadonly`, and `isreadonly`.
 
 ### Drawing & Crypt
-- **Drawing**: Can it actually render lines on screen? Does it handle the font cache properly?
-- **Crypt**: Testing the essentials like Base64 encoding/decoding and LZ4 compression.
+- **Drawing**: Verifying native rendering capabilities and checking for polyfill overlays.
+- **Crypt**: Testing essentials like Base64, AES (encrypt/decrypt) round-trips, and LZ4 compression.
 
 ---
 
