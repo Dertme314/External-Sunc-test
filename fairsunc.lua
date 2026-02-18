@@ -155,11 +155,11 @@ local function test(name, callback)
     end
 end
 
--- Test Categories
+-- Categories
 
 local function run_Environment()
     Lab.CurrentCategory = "Environment"
-    print("\n :: Environment ::")
+    print("\n Env Check")
 
     test("getgenv", function(f)
         assert(type(f()) == "table", "Not a table")
@@ -187,7 +187,7 @@ end
 
 local function run_Closures()
     Lab.CurrentCategory = "Closures"
-    print("\n :: Closures ::")
+    print("\n Closures")
 
     test("checkcaller", function(f)
         assert(f() == true, "Must return true in executor")
@@ -230,7 +230,7 @@ end
 
 local function run_FileSystem()
     Lab.CurrentCategory = "FileSystem"
-    print("\n :: FileSystem ::")
+    print("\n FS")
 
     test("writefile", function(f)
         f(CONFIG.TEST_FILE, "sunc_test_data")
@@ -323,7 +323,7 @@ end
 
 local function run_Network()
     Lab.CurrentCategory = "Network"
-    print("\n :: Network ::")
+    print("\n Network")
 
     test("request", function(f)
         local r = f({
@@ -343,7 +343,7 @@ end
 
 local function run_Input()
     Lab.CurrentCategory = "Input"
-    print("\n :: Input ::")
+    print("\n Input")
 
     test("keypress", function(f)
         local kr = resolve("keyrelease")
@@ -380,7 +380,7 @@ end
 
 local function run_LabInteraction()
     Lab.CurrentCategory = "LabInteraction"
-    print("\n :: Lab Interaction ::")
+    print("\n Interaction")
     local lab = workspace:WaitForChild("FairDuncLab", 2)
 
     if not lab then
@@ -424,7 +424,7 @@ end
 
 local function run_Crypt()
     Lab.CurrentCategory = "Crypt"
-    print("\n :: Crypt ::")
+    print("\n Crypt")
 
     test("crypt.base64encode", function(f)
         assert(f("Hello") == "SGVsbG8=", "Encode fail")
@@ -463,7 +463,7 @@ end
 
 local function run_Drawing()
     Lab.CurrentCategory = "Drawing"
-    print("\n :: Drawing ::")
+    print("\n Drawing")
 
     test("Drawing.new", function(f)
         local l = f("Line")
@@ -502,7 +502,7 @@ end
 
 local function run_Debug()
     Lab.CurrentCategory = "Debug"
-    print("\n :: Debug ::")
+    print("\n Debug")
 
     test("debug.getupvalue", function(f)
         local u = 10
@@ -526,7 +526,7 @@ end
 
 local function run_Console()
     Lab.CurrentCategory = "Console"
-    print("\n :: Console ::")
+    print("\n Console")
     test("rconsolecreate", function(f) f() end)
     test("rconsolename", function(f) f("Fair Dunc Lab") end)
     test("rconsoleprint", function(f) f("Test output\n") end)
@@ -535,7 +535,7 @@ end
 
 local function run_Metatable()
     Lab.CurrentCategory = "Metatable"
-    print("\n :: Metatable ::")
+    print("\n MT")
 
     test("getrawmetatable", function(f)
         local t = setmetatable({}, {
@@ -564,7 +564,7 @@ end
 
 local function run_Thread()
     Lab.CurrentCategory = "Thread"
-    print("\n :: Thread ::")
+    print("\n Thread")
 
     test("getthreadidentity", function(f)
         local id = f()
@@ -582,7 +582,7 @@ end
 
 local function run_Misc()
     Lab.CurrentCategory = "Misc"
-    print("\n :: Misc ::")
+    print("\n Misc")
 
     test("identifyexecutor", function(f)
         local n, v = f()

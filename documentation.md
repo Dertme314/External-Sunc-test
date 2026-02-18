@@ -1,7 +1,7 @@
-# External SUNC Test (Dunc Lab) ai wrote documentation file 😁
+# External SUNC Test (Dunc Lab)
 
 ## What is this?
-**Dunc Lab** is a no-BS, open-source test suite made specifically for **Roblox External Executors**. It's inspired by the original sUNC test by **senS**, but pivoted to focus on what actually matters for external tools—especially those that can't just hook into internal engine pointers like DLLs do.
+**Dunc Lab** is a open-source SUNC test made specifically for **Roblox External Executors**. It's inspired by the original sUNC test by **senS**, but pivoted to focus on the actual capabilities of external tools—especially those that can't just hook into internal engine pointers like DLLs do.
 
 The goal here is transparency. We want to see what an executor can *really* do without all the spoofed results and fake scores.
 
@@ -31,7 +31,7 @@ We use a few "Fair" checks to make sure an executor isn't just lying to the scri
 ---
 
 ## The Reality of Externals
-Let's be real: external executors have a harder time than DLLs. You're not going to see 100% on things like `hookmetamethod` or `getrawmetatable` on most externals because they're running in a totally different process.
+Let's be real external executors have a harder time than DLLs. You're not going to see 100% on things like `hookmetamethod` or `getrawmetatable` on most externals because they're running in a totally different process.
 
 Dunc Lab is designed to be **Fair**. A 75% score on a solid external is worth way more than a "100% UNC" score on an executor that spools fake functions just to look good.
 
@@ -39,19 +39,19 @@ Dunc Lab is designed to be **Fair**. A 75% score on a solid external is worth wa
 
 ## What we're testing (v4.5)
 
-### 📂 Environment & Closures
+### Environment & Closures
 Checking the basics: `getgenv`, `getrenv`, and `gethui`. We also run `loadstring` to make sure the Lua VM is behaving and use `checkcaller` to verify the execution context is actually isolated.
 
-### 💾 FileSystem
+### FileSystem
 This is the bread and butter of externals. We test `writefile`, `readfile`, and `appendfile`. We also make sure `appendfile` actually *appends* instead of just overwriting everything.
 
-### 🌐 Network & HttpService
+### Network & HttpService
 Verifying `request` and `game:HttpGet`. We hit live endpoints (like httpbin) to make sure the executor can actually talk to the internet and bring back usable data.
 
-### 🖱️ Input Simulation
+### Input Simulation
 Crucial for auto-farms. We test `keypress`, mouse clicks, and both absolute and relative mouse movement to ensure everything is responsive.
 
-### 🎨 Drawing & Crypt
+### Drawing & Crypt
 - **Drawing**: Can it actually render lines on screen? Does it handle the font cache properly?
 - **Crypt**: Testing the essentials like Base64 encoding/decoding and LZ4 compression.
 

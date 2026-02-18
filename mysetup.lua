@@ -1,6 +1,6 @@
 --[[
     Fair Dunc Lab v4.5
-    Setup — map, server handler, GUI
+    Setup script
 ]]
 
 local ReStorage = game:GetService("ReplicatedStorage")
@@ -19,7 +19,7 @@ cleanInstance(StarterGui, "DuncScoreGui")
 cleanInstance(ReStorage, "DUNC_Token")
 cleanInstance(ReStorage, "DUNC_Verifier")
 
--- Map
+-- map
 
 local lab = Instance.new("Folder")
 lab.Name = "FairDuncLab"
@@ -65,14 +65,14 @@ local function makeTestPart(name, position, size)
     return part
 end
 
--- 1. Click Detector
+-- click
 local clickPart = makeTestPart("ClickTestPart", Vector3.new(10, 2, 0))
 local cd = Instance.new("ClickDetector")
 cd.MaxActivationDistance = 200
 cd.Parent = clickPart
 addBillboard(clickPart, "Click Detector Test")
 
--- 2. Proximity Prompt
+-- prompt
 local promptPart = makeTestPart("PromptTestPart", Vector3.new(-10, 2, 0))
 local prompt = Instance.new("ProximityPrompt")
 prompt.MaxActivationDistance = 200
@@ -80,12 +80,12 @@ prompt.HoldDuration = 0
 prompt.Parent = promptPart
 addBillboard(promptPart, "Proximity Prompt Test")
 
--- 3. Touch
+-- touch
 local touchPart = makeTestPart("TouchTestPart", Vector3.new(0, 2, 10))
 touchPart.CanTouch = true
 addBillboard(touchPart, "Touch Interest Test")
 
--- Server Script
+-- helper
 
 local serverScript = Instance.new("Script")
 serverScript.Name = "LabServerHandler"
@@ -135,7 +135,7 @@ verifierEvent.OnServerEvent:Connect(function(player, packet)
     end
 end)
 
--- Interaction handlers (these MUST be here to survive Play)
+    -- remote check
 local function setupInteraction(partName, eventType)
     local part = lab:FindFirstChild(partName)
     if not part then return end
