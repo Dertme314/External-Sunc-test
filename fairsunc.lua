@@ -384,7 +384,7 @@ local function run_LabInteraction()
     local lab = workspace:WaitForChild("FairDuncLab", 2)
 
     if not lab then
-        warn("  [!] Lab map missing — skipping interaction tests")
+        warn("  [!] Lab map missing skipping interaction tests")
         return
     end
 

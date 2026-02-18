@@ -1,7 +1,7 @@
 # External SUNC Test (Dunc Lab)
 
 ## What is this?
-**Dunc Lab** is a open-source SUNC test made specifically for **Roblox External Executors**. It's inspired by the original sUNC test by **senS**, but pivoted to focus on the actual capabilities of external tools—especially those that can't just hook into internal engine pointers like DLLs do.
+**Dunc Lab** is a open-source SUNC test made specifically for **Roblox External Executors**. It's inspired by the original sUNC test by **senS**, but pivoted to focus on the actual capabilities of external tools especially those that can't just hook into internal engine pointers like DLLs do.
 
 The goal here is transparency. We want to see what an executor can *really* do without all the spoofed results and fake scores.
 
