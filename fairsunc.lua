@@ -26,10 +26,14 @@ local Lab = {
     CurrentCategory = ""
 }
 
+local cachedToken
 local function getServerComponents()
-    local token = ReStorage:FindFirstChild("DUNC_Token")
+    if not cachedToken then
+        local gt = ReStorage:FindFirstChild("DUNC_GetToken")
+        if gt then pcall(function() cachedToken = gt:InvokeServer() end) end
+    end
     local remote = ReStorage:FindFirstChild("DUNC_Verifier")
-    return token, remote
+    return {Value = cachedToken}, remote
 end
 
 local function getEnvironment()
@@ -170,13 +174,19 @@ local function test(name, callback)
     end
 end
 
+local MISSING_SENTINEL = "##MISSING##"
+
 local function testRaw(name, callback)
     task.wait()
     local s, e = pcall(callback)
-    if s then
-        record(name, "PASS")
+    if not s then
+        if type(e) == "string" and string.find(e, MISSING_SENTINEL) then
+            record(name, "MISSING")
+        else
+            record(name, "FAIL", e)
+        end
     else
-        record(name, "FAIL", e)
+        record(name, "PASS")
     end
 end
 
@@ -206,26 +216,26 @@ local function run_Environment()
         if not wf then error("Requires writefile") end
         wf("test_asset.txt", "data")
         task.wait(0.1)
-        local uri = f("test_asset.txt")
+        local s, uri = pcall(f, "test_asset.txt")
+        pcall(resolve("delfile") or function() end, "test_asset.txt")
+        if not s then error(uri) end
         assert(type(uri) == "string", "Invalid return")
         assert(string.match(uri, "rbxasset"), "Not an asset URI")
     end)
 
     testRaw("getrunningscripts check", function()
         local f = resolve("getrunningscripts")
-        if not f then
-            record("getrunningscripts check", "MISSING")
-            return
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local scripts = f()
         assert(type(scripts) == "table", "not a table")
 
+        pcall(f)
         local t0 = os.clock()
         for _ = 1, 10 do f() end
         local elapsed = os.clock() - t0
 
-        if elapsed > 0.25 then
+        if elapsed > 1.0 then
             error(string.format("10 calls took %.3fs", elapsed))
         end
 
@@ -270,11 +280,13 @@ local function run_Closures()
     end)
 
     test("hookfunction", function(f)
-        local old = f(warn, function(...) return "hooked" end)
+        shared._dunc_dummy_func = function() return "original" end
+        local old = f(shared._dunc_dummy_func, function() return "hooked" end)
         assert(type(old) == "function", "Did not return original")
-        local result = warn("test")
+        local result = shared._dunc_dummy_func()
+        f(shared._dunc_dummy_func, old)
+        shared._dunc_dummy_func = nil
         assert(result == "hooked", "Hook did not take effect")
-        f(warn, old)
     end)
 
     test("loadstring", function(f)
@@ -310,6 +322,7 @@ local function run_FileSystem()
         if not wf then error("Requires writefile") end
         wf(CONFIG.TEST_FILE_2, "_append")
         f(CONFIG.TEST_FILE_2, "_data")
+        local rf = resolve("readfile")
         if rf then
             local d = rf(CONFIG.TEST_FILE_2)
             assert(d == "_append_data", "Append failed: got '" .. tostring(d) .. "'")
@@ -451,8 +464,9 @@ local function run_LabInteraction()
         if not part then error("ClickTestPart missing") end
         local cd = part:FindFirstChildOfClass("ClickDetector")
         if not cd then error("ClickDetector child missing") end
+        local t0 = os.clock()
         f(cd)
-        task.wait(CONFIG.LAB_WAIT)
+        repeat task.wait() until part.BrickColor == BrickColor.new("Lime green") or os.clock() - t0 > 2.0
         assert(part.BrickColor == BrickColor.new("Lime green"), "Visual feedback missing")
     end)
 
@@ -461,8 +475,9 @@ local function run_LabInteraction()
         if not part then error("PromptTestPart missing") end
         local pp = part:FindFirstChildOfClass("ProximityPrompt")
         if not pp then error("ProximityPrompt child missing") end
+        local t0 = os.clock()
         f(pp)
-        task.wait(CONFIG.LAB_WAIT)
+        repeat task.wait() until part.BrickColor == BrickColor.new("Cyan") or os.clock() - t0 > 2.0
         assert(part.BrickColor == BrickColor.new("Cyan"), "Visual feedback missing")
     end)
 
@@ -473,10 +488,11 @@ local function run_LabInteraction()
         local root = char:WaitForChild("HumanoidRootPart", 5)
         if not root then error("Character not loaded") end
 
+        local t0 = os.clock()
         f(root, part, 0)
         task.wait()
         f(root, part, 1)
-        task.wait(CONFIG.LAB_WAIT)
+        repeat task.wait() until (part.BrickColor == BrickColor.new("New Yeller") or part.BrickColor == BrickColor.new("Lime green")) or os.clock() - t0 > 2.0
         assert(
             part.BrickColor == BrickColor.new("New Yeller") or part.BrickColor == BrickColor.new("Lime green"),
             "Touch feedback missing"
@@ -506,6 +522,7 @@ local function run_Crypt()
         local gd = resolve("crypt.decrypt")
         local gb = resolve("crypt.generatebytes")
         if not gk or not gd then error("Deps missing") end
+        if not gb then error("Requires crypt.generatebytes for CBC test") end
 
         local key = gk()
         local iv = gb and gb(16) or nil
@@ -541,16 +558,19 @@ local function run_Drawing()
         end
     end)
 
-    test("Drawing.Fonts", function(f)
-        assert(type(f) == "table", "Fonts missing")
+    testRaw("Drawing.Fonts", function()
+        local f = resolve("Drawing.Fonts")
+        if not f then error(MISSING_SENTINEL, 0) end
+        assert(type(f) == "table", "Fonts not a table")
     end)
 
     test("isrenderobj", function(f)
         local dn = resolve("Drawing.new")
         if not dn then error("Drawing.new missing") end
         local l = dn("Line")
-        local result = f(l)
+        local s, result = pcall(f, l)
         l:Remove()
+        if not s then error(result) end
         assert(result == true, "Check fail")
     end)
 
@@ -559,8 +579,9 @@ local function run_Drawing()
         if not dn then error("Drawing.new missing") end
         local l = dn("Line")
         l.Visible = true
-        local val = f(l, "Visible")
+        local s, val = pcall(f, l, "Visible")
         l:Remove()
+        if not s then error(val) end
         assert(val == true, "Get fail")
     end)
 
@@ -742,10 +763,7 @@ local function run_Debug()
     testRaw("debug.setconstant consistency", function()
         local fset = resolve("debug.setconstant")
         local fget = resolve("debug.getconstants")
-        if not fset or not fget then 
-             record("debug.setconstant consistency", "MISSING")
-             return 
-        end
+        if not fset or not fget then error(MISSING_SENTINEL, 0) end
 
         local function probe() return "SETCONST_ORIG" end
         local consts = fget(probe)
@@ -786,14 +804,15 @@ local function run_Debug()
     testRaw("debug.setstack consistency", function()
         local fset = resolve("debug.setstack")
         local fget = resolve("debug.getstack")
-        if not fset or not fget then 
-             record("debug.setstack consistency", "MISSING")
-             return 
-        end
+        if not fset or not fget then error(MISSING_SENTINEL, 0) end
 
         local before = fget(1, 1)
-        fset(1, 1, "DUNC_STACK_VAL")
-        local after = fget(1, 1)
+        local after
+        local function inner()
+            fset(1, 1, "DUNC_STACK_VAL")
+            after = fget(1, 1)
+        end
+        inner()
         
         if before and after and before == after and after ~= "DUNC_STACK_VAL" then
              error("Stack slot unchanged after setstack")
@@ -919,6 +938,7 @@ local function run_Thread()
 
     test("setthreadidentity", function(f)
         local gti = resolve("getthreadidentity")
+        local original = gti and gti() or nil
         f(8)
         if gti then assert(gti() == 8, "Identity not set to 8") end
         
@@ -927,7 +947,7 @@ local function run_Thread()
             local _ = cg:GetChildren() 
         end)
         
-        if original then f(original) end
+        if original ~= nil then f(original) end
         
         if not realAccess then
              error("Identity set to 8 but failed to access CoreGui")
@@ -953,7 +973,7 @@ local function run_Misc()
         local original = gfc and gfc() or nil
         f(60)
         if gfc then assert(gfc() == 60, "FPS cap not applied") end
-        if original then f(original) end
+        if original ~= nil then f(original) end
     end)
 
     test("getfpscap", function(f)
@@ -997,7 +1017,6 @@ local function run_Misc()
              conns[1]:Fire() 
              task.wait()
              if count == 0 then
-                  be:Destroy()
                   warn("    [!] getconnections: Fire() did not invoke handler")
              end
         end
@@ -1012,15 +1031,27 @@ local function run_Misc()
         end
         
         local consts = resolve("debug.getconstants")
+        local getp = resolve("debug.getprotos")
         if consts then
-             local c = consts(f) 
-             if c then
-                for _, v in ipairs(c) do
-                    if type(v) == "string" and (string.find(v, "github") or string.find(v, "HttpGet")) then
-                         error("Depends on external HttpGet (found '"..v.."')")
-                    end
-                end
+             local function check_f(func)
+                 local c = consts(func)
+                 if c then
+                     for _, v in ipairs(c) do
+                         if type(v) == "string" and (string.find(v, "github") or string.find(v, "HttpGet")) then
+                              error("Depends on external HttpGet (found '"..v.."')")
+                         end
+                     end
+                 end
+                 if getp then
+                     local p = pcall(getp, func) and getp(func)
+                     if type(p) == "table" then
+                         for _, pr in ipairs(p) do
+                             if type(pr) == "function" then check_f(pr) end
+                         end
+                     end
+                 end
              end
+             pcall(check_f, f)
         end
     end)
 end

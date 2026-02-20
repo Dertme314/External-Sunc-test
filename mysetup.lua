@@ -16,7 +16,7 @@ end
 cleanInstance(workspace, "FairDuncLab")
 cleanInstance(SSS, "LabServerHandler")
 cleanInstance(StarterGui, "DuncScoreGui")
-cleanInstance(ReStorage, "DUNC_Token")
+cleanInstance(ReStorage, "DUNC_GetToken")
 cleanInstance(ReStorage, "DUNC_Verifier")
 
 -- map
@@ -89,16 +89,24 @@ addBillboard(touchPart, "Touch Interest Test")
 
 local serverScript = Instance.new("Script")
 serverScript.Name = "LabServerHandler"
+serverScript.Disabled = true
 serverScript.Source = [==[
 local ReStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local lab = workspace:WaitForChild("FairDuncLab")
 
--- Token
-local tokenValue = Instance.new("StringValue")
-tokenValue.Name = "DUNC_Token"
-tokenValue.Value = HttpService:GenerateGUID(false)
-tokenValue.Parent = ReStorage
+-- Token (Secure RemoteFunction)
+local getToken = Instance.new("RemoteFunction")
+getToken.Name = "DUNC_GetToken"
+getToken.Parent = ReStorage
+
+local playerTokens = {}
+getToken.OnServerInvoke = function(player)
+    if not playerTokens[player] then
+        playerTokens[player] = HttpService:GenerateGUID(false)
+    end
+    return playerTokens[player]
+end
 
 -- Remote
 local verifierEvent = Instance.new("RemoteEvent")
@@ -108,7 +116,7 @@ verifierEvent.Parent = ReStorage
 -- Handle client reports
 verifierEvent.OnServerEvent:Connect(function(player, packet)
     if type(packet) ~= "table" then return end
-    if packet.Token ~= tokenValue.Value then return end
+    if packet.Token ~= playerTokens[player] then return end
 
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return end
@@ -176,6 +184,7 @@ setupInteraction("TouchTestPart", "Touch")
 print("[Fair Dunc Lab] Server ready")
 ]==]
 serverScript.Parent = SSS
+serverScript.Disabled = false
 
 -- GUI
 
