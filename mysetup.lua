@@ -143,7 +143,7 @@ verifierEvent.OnServerEvent:Connect(function(player, packet)
     end
 end)
 
-    -- remote check
+-- remote check
 local function setupInteraction(partName, eventType)
     local part = lab:FindFirstChild(partName)
     if not part then return end

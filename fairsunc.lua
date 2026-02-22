@@ -281,12 +281,18 @@ local function run_Closures()
 
     test("hookfunction", function(f)
         shared._dunc_dummy_func = function() return "original" end
-        local old = f(shared._dunc_dummy_func, function() return "hooked" end)
-        assert(type(old) == "function", "Did not return original")
-        local result = shared._dunc_dummy_func()
-        f(shared._dunc_dummy_func, old)
+        local old
+        local ok, err = pcall(function()
+            old = f(shared._dunc_dummy_func, function() return "hooked" end)
+            assert(type(old) == "function", "Did not return original")
+            local result = shared._dunc_dummy_func()
+            assert(result == "hooked", "Hook did not take effect")
+        end)
+        if old and shared._dunc_dummy_func then
+            pcall(f, shared._dunc_dummy_func, old)
+        end
         shared._dunc_dummy_func = nil
-        assert(result == "hooked", "Hook did not take effect")
+        if not ok then error(err) end
     end)
 
     test("loadstring", function(f)
@@ -322,6 +328,7 @@ local function run_FileSystem()
         if not wf then error("Requires writefile") end
         wf(CONFIG.TEST_FILE_2, "_append")
         f(CONFIG.TEST_FILE_2, "_data")
+        task.wait(0.1)
         local rf = resolve("readfile")
         if rf then
             local d = rf(CONFIG.TEST_FILE_2)
@@ -386,6 +393,7 @@ local function run_FileSystem()
         wf(CONFIG.LIST_FOLDER .. "/test1.txt", "1")
         local list = f(CONFIG.LIST_FOLDER)
         pcall(resolve("delfile"), CONFIG.LIST_FOLDER .. "/test1.txt")
+        pcall(resolve("delfolder") or function() end, CONFIG.LIST_FOLDER)
         
         assert(type(list) == "table", "Did not return table")
         assert(#list > 0, "No files listed")
@@ -492,11 +500,8 @@ local function run_LabInteraction()
         f(root, part, 0)
         task.wait()
         f(root, part, 1)
-        repeat task.wait() until (part.BrickColor == BrickColor.new("New Yeller") or part.BrickColor == BrickColor.new("Lime green")) or os.clock() - t0 > 2.0
-        assert(
-            part.BrickColor == BrickColor.new("New Yeller") or part.BrickColor == BrickColor.new("Lime green"),
-            "Touch feedback missing"
-        )
+        repeat task.wait() until part.BrickColor == BrickColor.new("New Yeller") or os.clock() - t0 > 2.0
+        assert(part.BrickColor == BrickColor.new("New Yeller"), "Touch feedback missing")
     end)
 end
 
@@ -525,7 +530,7 @@ local function run_Crypt()
         if not gb then error("Requires crypt.generatebytes for CBC test") end
 
         local key = gk()
-        local iv = gb and gb(16) or nil
+        local iv = gb(16)
         local data = f("test", key, iv, "CBC")
         local dec = gd(data, key, iv, "CBC")
         assert(dec == "test", "Round trip fail")
@@ -591,10 +596,7 @@ local function run_Drawing()
 
     testRaw("Drawing.new polyfill check", function()
         local dn = resolve("Drawing.new")
-        if not dn then 
-            record("Drawing.new polyfill check", "MISSING")
-            return 
-        end
+        if not dn then error(MISSING_SENTINEL, 0) end
 
         local coreGui = game:GetService("CoreGui")
         local before = #coreGui:GetChildren()
@@ -657,10 +659,7 @@ local function run_Debug()
     -- Extra Debug Consistency Checks
     testRaw("debug.getconstant consistency", function()
         local f = resolve("debug.getconstant")
-        if not f then 
-            record("debug.getconstant consistency", "MISSING")
-            return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local function probe()
             local _a = "DUNC_UNIQUE_CONST"
@@ -720,10 +719,7 @@ local function run_Debug()
 
     testRaw("debug.getupvalue consistency", function()
         local f = resolve("debug.getupvalue")
-        if not f then 
-            record("debug.getupvalue consistency", "MISSING")
-            return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local sentinel = newproxy(false)
         local function capture() return sentinel end
@@ -780,10 +776,7 @@ local function run_Debug()
 
     testRaw("debug.getstack consistency", function()
         local f = resolve("debug.getstack")
-        if not f then 
-             record("debug.getstack consistency", "MISSING")
-             return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local r1 = f(1)
         
@@ -821,10 +814,7 @@ local function run_Debug()
 
     testRaw("debug.getprotos consistency", function()
         local f = resolve("debug.getprotos")
-        if not f then 
-             record("debug.getprotos consistency", "MISSING")
-             return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local function outer()
             local function inner1() return "I1" end
@@ -850,10 +840,7 @@ local function run_Debug()
     
     testRaw("debug.getproto consistency", function()
         local f = resolve("debug.getproto")
-        if not f then 
-             record("debug.getproto consistency", "MISSING")
-             return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local function outer()
             local function unique() return "PROTO_REAL" end
@@ -877,10 +864,7 @@ local function run_Debug()
     
     testRaw("debug.getinfo accuracy", function()
          local f = resolve("debug.getinfo")
-          if not f then 
-            record("debug.getinfo accuracy", "MISSING")
-            return 
-        end
+         if not f then error(MISSING_SENTINEL, 0) end
          local cInfo = f(print)
          local lInfo = f(function() end)
          if cInfo.what == lInfo.what then
@@ -939,19 +923,19 @@ local function run_Thread()
     test("setthreadidentity", function(f)
         local gti = resolve("getthreadidentity")
         local original = gti and gti() or nil
-        f(8)
-        if gti then assert(gti() == 8, "Identity not set to 8") end
-        
-        local realAccess = pcall(function()
-            local cg = game:GetService("CoreGui")
-            local _ = cg:GetChildren() 
+        local ok, err = pcall(function()
+            f(8)
+            if gti then assert(gti() == 8, "Identity not set to 8") end
+            local realAccess = pcall(function()
+                local cg = game:GetService("CoreGui")
+                local _ = cg:GetChildren()
+            end)
+            if not realAccess then
+                error("Identity set to 8 but failed to access CoreGui")
+            end
         end)
-        
-        if original ~= nil then f(original) end
-        
-        if not realAccess then
-             error("Identity set to 8 but failed to access CoreGui")
-        end
+        if original ~= nil then pcall(f, original) end
+        if not ok then error(err) end
     end)
 end
 
@@ -971,9 +955,12 @@ local function run_Misc()
     test("setfpscap", function(f)
         local gfc = resolve("getfpscap")
         local original = gfc and gfc() or nil
-        f(60)
-        if gfc then assert(gfc() == 60, "FPS cap not applied") end
-        if original ~= nil then f(original) end
+        local ok, err = pcall(function()
+            f(60)
+            if gfc then assert(gfc() == 60, "FPS cap not applied") end
+        end)
+        if original ~= nil then pcall(f, original) end
+        if not ok then error(err) end
     end)
 
     test("getfpscap", function(f)
@@ -988,10 +975,7 @@ local function run_Misc()
 
     testRaw("getconnections check", function()
         local f = resolve("getconnections")
-        if not f then 
-            record("getconnections check", "MISSING")
-            return 
-        end
+        if not f then error(MISSING_SENTINEL, 0) end
 
         local be = Instance.new("BindableEvent")
         local count = 0
@@ -1025,33 +1009,69 @@ local function run_Misc()
 
     testRaw("saveinstance check", function()
         local f = resolve("saveinstance")
-        if not f then 
-            record("saveinstance check", "MISSING")
-            return 
-        end
-        
+        if not f then error(MISSING_SENTINEL, 0) end
+
         local consts = resolve("debug.getconstants")
         local getp = resolve("debug.getprotos")
+        local getupv = resolve("debug.getupvalue")
+
+        local suspects = {
+            "github", "githubusercontent", "pastebin", "HttpGet",
+            "HttpService", "loadstring", "require", "raw.github"
+        }
+
+        local function isSuspicious(str)
+            if type(str) ~= "string" then return false end
+            local lower = string.lower(str)
+            for _, keyword in ipairs(suspects) do
+                if string.find(lower, string.lower(keyword)) then
+                    return str
+                end
+            end
+            return false
+        end
+
+        -- Scan constants recursively (depth-limited)
         if consts then
-             local function check_f(func)
-                 local c = consts(func)
-                 if c then
-                     for _, v in ipairs(c) do
-                         if type(v) == "string" and (string.find(v, "github") or string.find(v, "HttpGet")) then
-                              error("Depends on external HttpGet (found '"..v.."')")
-                         end
-                     end
-                 end
-                 if getp then
-                     local p = pcall(getp, func) and getp(func)
-                     if type(p) == "table" then
-                         for _, pr in ipairs(p) do
-                             if type(pr) == "function" then check_f(pr) end
-                         end
-                     end
-                 end
-             end
-             pcall(check_f, f)
+            local function check_f(func, depth)
+                if depth > 3 then return end
+                local ok, c = pcall(consts, func)
+                if ok and type(c) == "table" then
+                    for _, v in ipairs(c) do
+                        local hit = isSuspicious(v)
+                        if hit then
+                            error("Not built-in: found '" .. hit .. "' in constants")
+                        end
+                    end
+                end
+                if getp then
+                    local ok2, p = pcall(getp, func)
+                    if ok2 and type(p) == "table" then
+                        for _, pr in ipairs(p) do
+                            if type(pr) == "function" then check_f(pr, depth + 1) end
+                        end
+                    end
+                end
+            end
+            check_f(f, 0)
+        end
+
+        -- Scan upvalues for URL strings
+        if getupv then
+            for i = 1, 10 do
+                local ok, v = pcall(getupv, f, i)
+                if not ok then break end
+                local hit = isSuspicious(v)
+                if hit then
+                    error("Not built-in: found '" .. hit .. "' in upvalues")
+                end
+            end
+        end
+
+        -- Closure type hint
+        local isl = resolve("islclosure")
+        if isl and isl(f) then
+            warn("    [!] saveinstance is an L closure (may be Lua wrapper, not native)")
         end
     end)
 end
