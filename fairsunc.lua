@@ -1,10 +1,4 @@
---[[
-    Fair Dunc Lab v4.5
-    Universal UNC & Behavior Tests
-    - Fake / Stub Detection
-    - Improved Xeno-style fake catching
-]]
-
+-- fair sunc test bc sens doesnt want xeno to have high sunc
 local Players = game:GetService("Players")
 local ReStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -302,13 +296,11 @@ local function run_Closures()
         local isc = resolve("iscclosure")
         if isc then assert(isc(wrapped) == true, "Not detected as C closure") end
 
-        -- Stress test: coroutine.wrap-based newcclosure can break on rapid re-calls
         for i = 1, 50 do
             local r = wrapped(i)
             assert(r == i * 2, "newcclosure broke after " .. i .. " calls (got " .. tostring(r) .. ")")
         end
 
-        -- Multi-arg and nil-return test
         local wrapped2 = f(function(a, b, c) return a, b, c end)
         local a, b, c = wrapped2("x", nil, "z")
         assert(a == "x", "Multi-arg failed on arg 1")
@@ -934,14 +926,12 @@ local function run_Metatable()
         local ir = resolve("isreadonly")
         if ir then assert(ir(t) == true, "Not set to readonly") end
 
-        -- Verify writes actually error (catches table.clone fakes)
         local writeBlocked = not pcall(function() t._dunc_write_test = true end)
         assert(writeBlocked, "setreadonly did not block writes (table.clone fake?)")
 
         f(t, false)
         if ir then assert(ir(t) == false, "Not set back to writable") end
 
-        -- Verify writes work again after unsetting readonly
         local writeAllowed = pcall(function() t._dunc_write_test2 = true end)
         assert(writeAllowed, "setreadonly(t, false) did not restore writes")
     end)
@@ -1040,7 +1030,7 @@ local function run_Misc()
              error("Function field is nil for local connection (should be visible)")
         end
 
-        -- Verify the Function is our ACTUAL handler, not a dummy
+        -- Verify the Function is our ACTUAL handler, not a dummy 😁 
         local foundReal = false
         for _, conn in ipairs(conns) do
             if conn.Function == handler then
@@ -1049,7 +1039,7 @@ local function run_Misc()
             end
         end
         if not foundReal then
-             -- Try calling the returned function to see if it's ours
+             -- call the returned function to see if its mine
              local funcConn = conns[1].Function
              if funcConn then
                   sentinel.invoked = false
@@ -1070,7 +1060,7 @@ local function run_Misc()
              end
         end
 
-        -- Multi-connection test: connect 3 handlers, should get at least 3 connections
+        -- connect 3 handlers, should get at least 3 connections
         local be2 = Instance.new("BindableEvent")
         be2.Event:Connect(function() end)
         be2.Event:Connect(function() end)
@@ -1161,14 +1151,13 @@ local function run_Misc()
         local env = f(running[1])
         assert(type(env) == "table", "getsenv did not return a table")
 
-        -- A real script env should have more than just 'script'
         local keyCount = 0
         for _ in pairs(env) do keyCount += 1 end
         if keyCount <= 1 then
              error("getsenv returned only " .. keyCount .. " key(s) — likely a stub ({script=Script})")
         end
 
-        -- Check for expected globals in a real script env
+        -- check for expected globals in a real script env
         if env.script == nil then
              error("getsenv result missing 'script' field")
         end
