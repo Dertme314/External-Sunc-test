@@ -1,5 +1,5 @@
 --[[
-v1.3.10 CLIENT.LUA -- POST OPEN SOURCE
+v1.3.30 CLIENT.LUA -- POST OPEN SOURCE
 
 Xeno is only maintained and developed by Rizve.
 
@@ -11,19 +11,21 @@ Credits:
 - razzoni: Few function improvements and suggestions.
 ]]
 
+-- I apologize for UNC functions that are fake / not working as I would like more scripts being able to run (wont run properly though)
+
 local XENO_PID = "%XENO_CLIENT_PID%"
 
+-- local EncodingService = game:GetService("EncodingService") -- Games are able to detect it...
+
 local HttpService = game:FindService("HttpService")
+
+local CorePackages = game:GetService("CorePackages")
 local CoreGui = game:GetService("CoreGui")
 local StarterGui = game:GetService("StarterGui")
-local InsertService = game:GetService("InsertService")
-local CorePackages = game:GetService("CorePackages")
-local Debris = game:GetService("Debris")
+
 local UserInputService = game:GetService("UserInputService")
 
 if CoreGui:FindFirstChild(XENO_PID) then
-	--warn("Xeno Initialization Cancelled: Container already exists (Proper checking was not done on C). Please send me a screenshot of this error to my Discord: .rizve")
-	--warn(script:GetFullName())
 	return
 end
 
@@ -45,22 +47,25 @@ local Xeno = {}
 Xeno.about = {
 	['Name'] = "Project Xeno";
 	['Publisher'] = "Rizve A";
-	['Version'] = "v1.3.10";
+	['Version'] = "%XENO_VERSION%";
 	['Website'] = "https://xeno.onl";
 	['Discord'] = "https://discord.gg/xe-no";
+	['RobloxGameClientVersionHash'] = "%ROBLOX_CLIENT_VERSION%";
 }
 table.freeze(Xeno.about)
+
 Xeno.Xeno = {about = Xeno.about}
+
 shared.__Xeno = Xeno
 
 local Urls = {
 	['Version'] = "https://x3no.pages.dev/version.txt";
 	['CodeExecution'] = "https://x3no.pages.dev/code.lua";
 	--['Icon'] = "http://www.roblox.com/asset/?id=107845011312901";
-	['Server'] = "http://localhost:3110"
+	['Server'] = "http://localhost:%XENO_SERVER_PORT%"
 }
 
-local xRenv = { -- To prevent call stack overflow & ambiguous.. and func replacement abuse
+local xRenv = { -- To prevent call stack overflow & ambiguousness.. and func replacement abuse
 	['require'] = require,
 	['Instance'] = Instance,
 	['game'] = game,
@@ -72,14 +77,22 @@ local xRenv = { -- To prevent call stack overflow & ambiguous.. and func replace
 	['assert'] = assert,
 	['pcall'] = pcall,
 	['xpcall'] = xpcall,
-	['collectgarbage'] = getfenv().collectgarbage,
+	--['collectgarbage'] = getfenv().collectgarbage,
 	['warn'] = warn,
-	['print'] = print
+	['print'] = print,
+	['error'] = error,
+	['setfenv'] = setfenv,
+	['getfenv'] = getfenv,
+	['table'] = table,
+	['string'] = string,
+	['tostring'] = tostring,
+	['rawequal'] = rawequal,
+	['newproxy'] = newproxy,
+	['getmetatable'] = getmetatable,
+	['setmetatable'] = setmetatable
 } -- TODO: Replace all calling functions with xRenv[func]
 
-local fenv = getfenv()
-
--- I apologize for UNC functions that are fake / not working as I would like more scripts being able to run (wont run properly though)
+local fenv = xRenv.getfenv()
 
 --------------------------------------------------------
 --- [XENO COMMUNICATION] --- START
@@ -205,7 +218,7 @@ local XFS = {
 
 	GetInstanceAddress = 18,
 
-	GetXenoApplicationSettings = 19
+	PlayerRemoving = 19
 }
 
 local XInputType = {
@@ -286,6 +299,8 @@ local XLZTps = {
 	Decompress = 1
 }
 
+export type userdata = {}
+
 local function RawHttpGet(url: string): string -- Used only for version checking & repo resources
 	local result = nil
 	local start = tick()
@@ -311,7 +326,7 @@ local function createInstancePointer(instance: Instance): Instance -- Will have 
 	local objectValue = xRenv.Instance.new("ObjectValue", PtrContainer)
 	objectValue.Name = HttpService:GenerateGUID(false)
 	objectValue.Value = instance
-	--Debris:AddItem(objectValue, 30) -- I dont trust myself.
+	--Debris:AddItem(objectValue, 30)
 	return objectValue
 end
 
@@ -353,7 +368,7 @@ task.spawn(function()
 		if string.sub(vers, 1, 1) ~= 'v' then
 			continue
 		end
-		
+
 		local xnVer = getNums(tostring(vers))
 
 		if xnVer and xnVer > nVer then -- verifies if the current version to int is greater than updated
@@ -419,23 +434,17 @@ end)
 --- [PROXY SERVICE] --- START -- FULL CREDITS GOES TO SOLARA FOR MOCK SERVICE
 local ProxyService = {Map = {}, funcMap = {}}
 local BlockedServiceFuncs = {
-	TestService = {"Run", "Require"},
+	TestService = {"Run", "RunAsync", "Require"},
 	WebViewService = {"CloseWindow", "MutateWindow", "OpenWindow"},
-	--[[
-	AccountService = {
-		"GetCredentialsHeaders", "GetDeviceAccessToken",
-		"GetDeviceIntegrityToken", "GetDeviceIntegrityTokenYield"
-	},
-	]]
 	AnalyticsService = {
 		"FireInGameEconomyEvent", "FireLogEvent", "FireEvent",
 		"FireCustomEvent", "LogEconomyEvent"
 	},
 	CaptureService = {
-		"DeleteCapture", "GetCaptureFilePathAsync", "CreatePostAsync",
+		"DeleteCapture", "DeleteCapturesAsync", "GetCaptureFilePathAsync", "CreatePostAsync",
 		"SaveCaptureToExternalStorage", "SaveCapturesToExternalStorageAsync",
-		"GetCaptureSizeAsync", "GetCaptureStorageSizeAsync",
-		"PromptSaveCapturesToGallery", "PromptShareCapture",
+		"GetCaptureSizeAsync", "GetCaptureStorageSizeAsync", "GetCaptureUploadDataAsync",
+		"PromptSaveCapturesToGallery", "PromptShareCapture", "CaptureScreenshot",
 		"RetrieveCaptures", "SaveScreenshotCapture"
 	},
 	InsertService = {"GetLocalFileContents"},
@@ -455,14 +464,14 @@ local BlockedServiceFuncs = {
 		"PromptProductPurchase", "PromptPurchase", "PromptRobloxPurchase",
 		"PromptThirdPartyPurchase", "GetRobuxBalance", "PromptBulkPurchase",
 		"PerformBulkPurchase", "PerformSubscriptionPurchase", "PerformSubscriptionPurchaseV2",
-		"PromptCollectiblesPurchase", "PromptNativePurchaseWithLocalPlayer",
-		"PromptPremiumPurchase", "PromptSubscriptionPurchase", "GetUserSubscriptionPaymentHistoryAsync"
+		"PromptCollectiblesPurchase", "PromptNativePurchase", "PromptNativePurchaseWithLocalPlayer",
+		"PromptPremiumPurchase", "PromptSubscriptionPurchase",
+		"GetUserSubscriptionPaymentHistoryAsync", "GetUserSubscriptionStatusAsync"
 	},
 	GuiService = {
 		"OpenBrowserWindow", "OpenNativeOverlay",
 		"BroadcastNotification", "SetPurchasePromptIsShown"
 	},
-	--DataModelPatchService = {"RegisterPatch", "UpdatePatch"},
 	EventIngestService = {
 		"SendEventDeferred", "SetRBXEvent", "SetRBXEventStream", "SendEventImmediately"
 	},
@@ -501,7 +510,6 @@ local BlockedServiceFuncs = {
 		"PromptCommerceProductPurchase", "PromptRealWorldCommerceBrowser",
 		"UserEligibleForRealWorldCommerceAsync"
 	},
-	--OmniRecommendationsService = {"ClearSessionId", "MakeRequest"}, // MakeRequest;;;;
 	Players = {"ReportAbuse", "ReportAbuseV3", "ReportChatAbuse"},
 	PlatformCloudStorageService = {"GetUserDataAsync", "SetUserDataAsync"},
 	CoreGui = {"TakeScreenshot", "ToggleRecording"},
@@ -530,57 +538,114 @@ local BlockedServiceFuncs = {
 		"SignalUpdateOutfitFailed", "SignalUpdateOutfitPermissionDenied",
 		"NoPromptSaveAvatarThumbnailCustomization", "NoPromptSaveAvatar",
 		"NoPromptRenameOutfit", "NoPromptDeleteOutfit", "NoPromptCreateOutfit"
-	}
+	},
+	FileManagerService = {"ListFilesInFolderAsync", "OpenFileInWebBrowser", "OpenFolder", "RevealFileInFolder"},
+	WebSocketService = {"CreateClient"}
 }
 
 local function Blocked()
 	error("Attempt to call a blocked function", 3)
 end
-setfenv(Blocked, {error = error})
+xRenv.setfenv(Blocked, {error = xRenv.error})
 
 for serviceName, methods in pairs(BlockedServiceFuncs) do
 	xRenv.pcall(function() -- will need to remove this soon
 		local service = xRenv.game:GetService(serviceName)
 		local serviceTable = {}
-
 		for _, methodName in ipairs(methods) do
-			serviceTable[service[methodName]] = Blocked
+			pcall(function() -- Will error if some function inside the service doesnt exist, preventing other functions from being blocked
+				serviceTable[service[methodName]] = Blocked
+			end)
 		end
-
 		ProxyService.funcMap[service] = serviceTable
 	end)
 end
 
-ProxyService.funcMap[xRenv.game] = {
-	[xRenv.game.Load] = Blocked,
-	[xRenv.game.ReportInGoogleAnalytics] = Blocked,
-	[xRenv.game.OpenScreenshotsFolder] = Blocked,
-	[xRenv.game.OpenVideosFolder] = Blocked
+ProxyService.funcMap["OpenCloudService"] = {
+	HttpRequestAsync = Blocked
 }
+
+ProxyService.funcMap["AccountService"] = {
+	GetCredentialsHeaders = Blocked;
+	GetDeviceAccessToken = Blocked;
+	GetDeviceIntegrityToken = Blocked;
+	GetDeviceIntegrityTokenYield = Blocked;
+}
+ProxyService.funcMap["AnimationFromVideoCreatorService"] = {
+	CreateJob = Blocked;
+	DownloadJobResult = Blocked;
+	FullProcess = Blocked;
+}
+ProxyService.funcMap["DataModelPatchService"] = {
+	RegisterPatch = Blocked;
+	UpdatePatch = Blocked;
+}
+ProxyService.funcMap["AppUpdateService"] = {
+	PerformManagedUpdate = Blocked;
+}
+ProxyService.funcMap["MessagingService"] = {
+	PublishAsync = Blocked;
+	SubscribeAsync = Blocked;
+}
+ProxyService.funcMap["OmniRecommendationsService"] = {
+	ClearSessionId = Blocked;
+	MakeRequest = Blocked;
+}
+
+ProxyService.funcMap[xRenv.game] = {
+	Load = Blocked,
+	ReportInGoogleAnalytics = Blocked, -- REMOVED
+	OpenScreenshotsFolder = Blocked,
+	OpenVideosFolder = Blocked
+}
+
+local rss__eq = function(x, y) 
+	local originalX = ProxyService.Map[x]
+	local originalY = ProxyService.Map[y]
+	local eq = false
+	if originalX ~= nil then
+		eq = false
+		if originalY ~= nil then
+			if originalX ~= originalY then
+				eq = false
+			else
+				eq = true
+			end
+		end
+	end
+	return eq
+end
 
 function ProxyService:RBXScriptSignal(Signal: RBXScriptSignal)
 	local ProxiedSignal = {}
-	setmetatable(ProxiedSignal, {
+	xRenv.setmetatable(ProxiedSignal, {
 		__index = function(self, key)
-			key = string.lower(key)
+			key = xRenv.string.lower(key)
 			if key == "wait" then
 				local Proxied = function(signal, ...: any)
 					signal = ProxyService.Map[signal]
-					local args = { Signal.Wait(signal, ...) }
-					for i, v in args do 
-						if xRenv.type(v) == "userdata" then 
-							if ProxyService.Map[v] then 
-								args[i] = ProxyService.Map[v]
-							elseif xRenv.typeof(v) == "Instance" then 
-								args[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
-							else 
-								args[i] = ProxyService:Userdata(v)
+					local function recur(t)
+						for i, v in t do
+							if xRenv.type(v) == "userdata" then
+								if ProxyService.Map[v] then 
+									t[i] = ProxyService.Map[v]
+								elseif xRenv.typeof(v) == "Instance" then 
+									t[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
+								elseif xRenv.typeof(v) == "RBXScriptSignal" then 
+									t[i] = ProxyService:RBXScriptSignal(v)
+								else
+									t[i] = ProxyService:Userdata(v)
+								end
+							elseif xRenv.typeof(v) == "table" then
+								t[i] = recur(v)
 							end
 						end
+						return t
 					end
-					return unpack(args)
+					local args = recur(xRenv.table.pack(signal.Wait(signal, ...)))
+					return xRenv.table.unpack(args, 1, args.n)
 				end
-				setfenv(Proxied, Xeno)
+				xRenv.setfenv(Proxied, Xeno)
 				return Proxied
 			end
 
@@ -588,22 +653,30 @@ function ProxyService:RBXScriptSignal(Signal: RBXScriptSignal)
 				local Proxied = function(signal, func: () -> any)
 					signal = ProxyService.Map[signal]
 					return Signal.Connect(signal, function(...: any)
-						local args = {...}
-						for i, v in args do 
-							if xRenv.type(v) == "userdata" then 
-								if ProxyService.Map[v] then 
-									args[i] = ProxyService.Map[v]
-								elseif xRenv.typeof(v) == "Instance" then 
-									args[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
-								else 
-									args[i] = ProxyService:Userdata(v)
+						local args = xRenv.table.pack(...)
+						local function recur(t)
+							for i, v in t do
+								if xRenv.type(v) == "userdata" then
+									if ProxyService.Map[v] then 
+										t[i] = ProxyService.Map[v]
+									elseif xRenv.typeof(v) == "Instance" then 
+										t[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
+									elseif xRenv.typeof(v) == "RBXScriptSignal" then 
+										t[i] = ProxyService:RBXScriptSignal(v)
+									else
+										t[i] = ProxyService:Userdata(v)
+									end
+								elseif xRenv.typeof(v) == "table" then
+									t[i] = recur(v)
 								end
 							end
+							return t
 						end
-						return func(unpack(args))
+						args = recur(args)
+						return func(xRenv.table.unpack(args, 1, args.n))
 					end)
 				end
-				setfenv(Proxied, Xeno)
+				xRenv.setfenv(Proxied, Xeno)
 				return Proxied
 			end
 
@@ -611,34 +684,63 @@ function ProxyService:RBXScriptSignal(Signal: RBXScriptSignal)
 				local Proxied = function(signal, func: () -> any)
 					signal = ProxyService.Map[signal]
 					return Signal.Once(signal, function(...: any)
-						local args = {...}
-						for i, v in args do 
-							if xRenv.type(v) == "userdata" then 
-								if ProxyService.Map[v] then  
-									args[i] = ProxyService.Map[v]
-								elseif xRenv.typeof(v) == "Instance" then
-									args[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
-								else 
-									args[i] = ProxyService:Userdata(v)
+						local args = xRenv.table.pack(...)
+						local function recur(t)
+							for i, v in t do
+								if xRenv.type(v) == "userdata" then
+									if ProxyService.Map[v] then 
+										t[i] = ProxyService.Map[v]
+									elseif xRenv.typeof(v) == "Instance" then 
+										t[i] = ProxyService:Instance(v, ProxyService.funcMap[v])
+									elseif xRenv.typeof(v) == "RBXScriptSignal" then 
+										t[i] = ProxyService:RBXScriptSignal(v)
+									else
+										t[i] = ProxyService:Userdata(v)
+									end
+								elseif xRenv.typeof(v) == "table" then
+									t[i] = recur(v)
 								end
 							end
+							return t
 						end
-						return func(unpack(args))
+						args = recur(args)
+						return func(xRenv.table.unpack(args, 1, args.n))
 					end)
 				end
-				setfenv(Proxied, Xeno)
+				xRenv.setfenv(Proxied, Xeno)
 				return Proxied
 			end
 		end,
-		__tostring = function() return tostring(Signal) end,
+		__tostring = function() return xRenv.tostring(Signal) end,
+		__iter = function() xRenv.error("attempt to iterate over a RBXScriptSignal value", 2) end,
 		__metatable = "The metatable is locked",
-		__type = "RBXScriptSignal"
+		__type = "RBXScriptSignal",
+		__eq = rss__eq,
 	})
 
 	ProxyService.Map[ProxiedSignal] = Signal
 	ProxyService.Map[Signal] = ProxiedSignal
 
 	return ProxiedSignal
+end
+
+local usrd__eq = function(x, y) 
+	if xRenv.rawequal(x, y) then
+		return true
+	end
+
+	if x == nil or y == nil then
+		return x == y
+	end
+
+	if xRenv.type(x) ~= xRenv.type(y) then
+		return false
+	end
+
+	local originalX = ProxyService.Map[x] or x
+	local originalY = ProxyService.Map[y] or y
+
+	return originalX == originalY
 end
 
 function ProxyService:Userdata(userdata: userdata)
@@ -665,7 +767,6 @@ function ProxyService:Userdata(userdata: userdata)
 		NumberRange = true,
 		NumberSequence = true,
 		NumberSequenceKeypoint = true,
-		OverlapParams = true,
 		Path2DControlPoint = true,
 		PathWaypoint = true,
 		PhysicalProperties = true,
@@ -686,9 +787,9 @@ function ProxyService:Userdata(userdata: userdata)
 	}
 	if nonInstanceUserdataTypes[xRenv.typeof(userdata)] then return userdata end
 
-	local ProxiedUserdata = newproxy(true)
+	local ProxiedUserdata = xRenv.newproxy(true)
 
-	local mt = getmetatable(ProxiedUserdata)
+	local mt = xRenv.getmetatable(ProxiedUserdata)
 	mt.__index = function(_, key)
 		if xRenv.typeof(userdata[key]) == "table" then
 			local rt = userdata[key]
@@ -699,6 +800,7 @@ function ProxyService:Userdata(userdata: userdata)
 							t[i] = ProxyService.Map[v]
 						elseif xRenv.typeof(v) == "RBXScriptSignal" then
 							t[i] = ProxyService:RBXScriptSignal(v)
+							--t[i] = ProxyService:RBXScriptSignal(v, ProxiedUserdata, key)
 						elseif xRenv.typeof(v) ~= "Instance" then
 							t[i] = ProxyService:Userdata(v)
 						else
@@ -706,7 +808,10 @@ function ProxyService:Userdata(userdata: userdata)
 								return v.ClassName
 							end)
 							if s and (not ProxyService.funcMap[v] and ProxyService.funcMap[v.ClassName]) then
-								error("Service '" .. tostring(v) ..  "' is not allowed", 3)
+								ProxyService.funcMap[v] = {}
+								for i in ProxyService.funcMap[v.ClassName] do
+									ProxyService.funcMap[v][v[i]] = Blocked
+								end
 							end
 							t[i] = ProxyService:Instance(v, ProxyService.funcMap[v] or ProxyService.funcMap[v.ClassName])
 						end
@@ -725,6 +830,7 @@ function ProxyService:Userdata(userdata: userdata)
 				return ProxyService.Map[userdata[key]]
 			end
 			return ProxyService:RBXScriptSignal(userdata[key])
+			--return ProxyService:RBXScriptSignal(userdata[key], ProxiedUserdata, key)
 		end
 
 		if xRenv.typeof(userdata[key]) == "Instance" then
@@ -741,7 +847,7 @@ function ProxyService:Userdata(userdata: userdata)
 
 		if xRenv.typeof(userdata[key]) == "function" then
 			local prx = function(...)
-				local args = {...}
+				local args = xRenv.table.pack(...)
 				do
 					local function recur(t)
 						for i, v in t do 
@@ -757,11 +863,11 @@ function ProxyService:Userdata(userdata: userdata)
 				end
 
 				local s, e = xRenv.pcall(function()
-					return { userdata[key](unpack(args)) }
+					return xRenv.table.pack(userdata[key](xRenv.table.unpack(args, 1, args.n)))
 				end)
 
 				if not s then
-					error(e, 2)
+					xRenv.error(e, 2)
 				end
 
 				if xRenv.typeof(e) == "table" then
@@ -772,6 +878,7 @@ function ProxyService:Userdata(userdata: userdata)
 									t[i] = ProxyService.Map[v]
 								elseif xRenv.typeof(v) == "RBXScriptSignal" then
 									t[i] = ProxyService:RBXScriptSignal(v)
+									--t[i] = ProxyService:RBXScriptSignal(v, ProxiedUserdata, key)
 								elseif xRenv.typeof(v) ~= "Instance" then
 									t[i] = ProxyService:Userdata(v)
 								else
@@ -779,7 +886,10 @@ function ProxyService:Userdata(userdata: userdata)
 										return v.ClassName
 									end)
 									if s and (not ProxyService.funcMap[v] and ProxyService.funcMap[v.ClassName]) then
-										error("Service '" .. tostring(v) ..  "' is not allowed", 3)
+										ProxyService.funcMap[v] = {}
+										for i in ProxyService.funcMap[v.ClassName] do
+											ProxyService.funcMap[v][v[i]] = Blocked
+										end
 									end
 									t[i] = ProxyService:Instance(v, ProxyService.funcMap[v] or ProxyService.funcMap[v.ClassName])
 								end
@@ -791,16 +901,16 @@ function ProxyService:Userdata(userdata: userdata)
 					end
 					e = recur(e)
 				end
-				return unpack(e)
+				return xRenv.table.unpack(e, 1, e.n)
 			end
-			setfenv(prx, Xeno)
+			xRenv.setfenv(prx, Xeno)
 			return prx
 		end
 		return userdata[key]
 	end
 
 	mt.__newindex = function(_, key, value)
-		if xRenv.type(value) == "table" then 
+		if xRenv.type(value) == "table" then
 			local function recur(t)
 				for i, v in t do 
 					if ProxyService.Map[v] then
@@ -829,37 +939,18 @@ function ProxyService:Userdata(userdata: userdata)
 	mt.__mod = function(_, x) return userdata % x end
 	mt.__pow = function(_, x) return userdata ^ x end
 	mt.__unm = function(_, x) return -userdata end
-	mt.__eq = function(x, y) 
-		if rawequal(x, y) then
-			return true
-		end
-
-
-		if x == nil or y == nil then
-			return x == y
-		end
-
-
-		if xRenv.type(x) ~= xRenv.type(y) then
-			return false
-		end
-
-		local originalX = ProxyService.Map[x] or x
-		local originalY = ProxyService.Map[y] or y
-
-		return originalX == originalY
-	end 
+	mt.__eq = usrd__eq
 	mt.__lt = function(_, x) return userdata < x end 
 	mt.__le = function(_, x) return userdata <= x end 
 	mt.__concat = function(_, x) return userdata .. x end 
 	mt.__len = function(_, x) return #userdata end
 	mt.__call = function(...) return userdata(...) end
-	mt.__tostring = function() return tostring(userdata) end
-	mt.__metatable = getmetatable(userdata)
+	mt.__tostring = function() return xRenv.tostring(userdata) end
+	mt.__metatable = xRenv.getmetatable(userdata)
 
 	for _, v in mt do 
 		if xRenv.typeof(v) == "function" then 
-			xRenv.pcall(setfenv, v, Xeno)
+			xRenv.pcall(xRenv.setfenv, v, Xeno)
 		end
 	end
 
@@ -869,7 +960,7 @@ function ProxyService:Userdata(userdata: userdata)
 	return ProxiedUserdata
 end
 
-function ProxyService:Instance(instance: Instance, customs: table, optionalAllowClone)
+function ProxyService:Instance(instance: Instance, customs: {}, optionalAllowClone)
 	if instance == xRenv.script then return Xeno.Instance.new("ModuleScript") end
 	if xRenv.typeof(instance) == "table" then return ProxyService.Map[instance] end
 
@@ -880,24 +971,24 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 	local realMethods = {};
 	local ProxiedInstance = {};
 
-	local key = tostring({})
+	local key = xRenv.tostring({})
 
 	xRenv.xpcall(function()
 		return instance[key]
 	end, function()
-		realMethods.__index = debug.info(2, "f")
+		realMethods.__index = xRenv.debug.info(2, "f")
 	end)
 
 	xRenv.xpcall(function()
 		instance[key] = instance
 	end, function()
-		realMethods.__newindex = debug.info(2, "f")
+		realMethods.__newindex = xRenv.debug.info(2, "f")
 	end)
 
 	xRenv.xpcall(function()
 		return instance[key](instance)
 	end, function()
-		realMethods.__namecall = debug.info(2, "f")
+		realMethods.__namecall = xRenv.debug.info(2, "f")
 	end)
 
 	local type_check_semibypass = {}
@@ -905,25 +996,25 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 	xRenv.xpcall(function()
 		return instance == type_check_semibypass
 	end, function()
-		realMethods.__eq = debug.info(2, "f")
+		realMethods.__eq = xRenv.debug.info(2, "f")
 	end)
 
 	realMethods.__tostring = function()
-		return tostring(instance)
+		return xRenv.tostring(instance)
 	end
 
 	local realIndex = realMethods.__index
-	local mapVal = tostring({})
+	local mapVal = xRenv.tostring({})
 
 	realMethods.__index = function(self, key)
 		if customs then 
-			key = string.gsub(key, "%z+$", "")
+			key = xRenv.string.gsub(key, "%z+$", "")
 			if customs[key] then return customs[key] end
 			if customs[instance[key]] then return customs[instance[key]] end
 		end
 		if xRenv.typeof(instance[key]) == "function" then
 			local proxy = function(...)
-				local args = {...}
+				local args = xRenv.table.pack(...)
 				do
 					local function recur(t)
 						for i, v in t do
@@ -933,23 +1024,23 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 								t[i] = recur(v)
 							elseif xRenv.type(v) == "function" then
 								local xglb = Xeno
-								local __cb_cache = setmetatable({}, { __mode = "k" })
+								local __cb_cache = xRenv.setmetatable({}, { __mode = "k" })
 								local function makeCbEnv()
-									local cbEnv = setmetatable({}, { __index = Xeno })
+									local cbEnv = xRenv.setmetatable({}, { __index = Xeno })
 									cbEnv._G = cbEnv
 
 									cbEnv.getfenv = function(_) return cbEnv end
 									cbEnv.setfenv = function(target, newEnv)
 										local tt = xRenv.type(target)
-										if tt == "number" then error("setfenv on stack level is not allowed", 2) end
+										if tt == "number" then xRenv.error("setfenv on stack level is not allowed", 2) end
 										if tt == "function" then
-											if newEnv ~= cbEnv then error("attempt to set foreign environment", 2) end
+											if newEnv ~= cbEnv then xRenv.error("attempt to set foreign environment", 2) end
 											return target
 										end
-										error("invalid setfenv target", 2)
+										xRenv.error("invalid setfenv target", 2)
 									end
 
-									cbEnv.debug = setmetatable({
+									cbEnv.debug = xRenv.setmetatable({
 										info = function(f, what)
 											if xRenv.type(f) == "number" and f > 0 then return nil end
 											return xRenv.debug.info(f, what)
@@ -965,17 +1056,17 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 									local cbEnv = makeCbEnv()
 									local wrapped
 									if xRenv.debug.info(fn, "s") ~= "[C]" then
-										local ok = xRenv.pcall(setfenv, fn, cbEnv)
+										local ok = xRenv.pcall(xRenv.setfenv, fn, cbEnv)
 										if ok then
-											local fe = getfenv(fn); fe.game = xglb.game
+											local fe = xRenv.getfenv(fn); fe.game = xglb.game
 											wrapped = fn
 										else
 											wrapped = function(...) return nil end
-											setfenv(wrapped, cbEnv)
+											xRenv.setfenv(wrapped, cbEnv)
 										end
 									else
 										wrapped = function(...) return fn(...) end
-										setfenv(wrapped, cbEnv)
+										xRenv.setfenv(wrapped, cbEnv)
 									end
 									__cb_cache[fn] = wrapped
 									return wrapped
@@ -991,11 +1082,11 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 				end
 
 				local s, e = xRenv.pcall(function() 
-					return { instance[key](unpack(args)) }
+					return xRenv.table.pack(instance[key](xRenv.table.unpack(args, 1, args.n)))
 				end)
 
 				if not s then
-					error(e, 2)
+					xRenv.error(e, 2)
 				end
 
 				if xRenv.typeof(e) == "table" then 
@@ -1006,6 +1097,7 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 									t[i] = ProxyService.Map[v]
 								elseif xRenv.typeof(v) == "RBXScriptSignal" then 
 									t[i] = ProxyService:RBXScriptSignal(v)
+									--t[i] = ProxyService:RBXScriptSignal(v, ProxiedInstance)
 								elseif xRenv.typeof(v) ~= "Instance" then 
 									t[i] = ProxyService:Userdata(v)
 								else
@@ -1013,7 +1105,10 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 										return v.ClassName
 									end)
 									if success and (not ProxyService.funcMap[v] and ProxyService.funcMap[v.ClassName]) then 
-										error("", 2)
+										ProxyService.funcMap[v] = {}
+										for i in ProxyService.funcMap[v.ClassName] do
+											ProxyService.funcMap[v][v[i]] = Blocked
+										end
 									end
 									t[i] = ProxyService:Instance(v, ProxyService.funcMap[v] or ProxyService.funcMap[v.ClassName])
 								end
@@ -1026,15 +1121,16 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 					e = recur(e)
 				end
 
-				return unpack(e)
+				return xRenv.table.unpack(e, 1, e.n)
 			end
 
-			setfenv(proxy, Xeno)
+			xRenv.setfenv(proxy, Xeno)
 
 			return proxy
 		end
 		if xRenv.typeof(instance[key]) == "RBXScriptSignal" then
 			return ProxyService:RBXScriptSignal(instance[key])
+			--return ProxyService:RBXScriptSignal(instance[key], ProxiedInstance, key)
 		end
 		if xRenv.type(instance[key]) == "userdata" then
 			if ProxyService.Map[instance[key]] then return ProxyService.Map[instance[key]] end
@@ -1052,6 +1148,7 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 							t[i] = ProxyService.Map[v]
 						elseif xRenv.typeof(v) == "RBXScriptSignal" then
 							t[i] = ProxyService:RBXScriptSignal(v)
+							--t[i] = ProxyService:RBXScriptSignal(v, ProxiedInstance, key)
 						elseif xRenv.typeof(v) ~= "Instance" then
 							t[i] = ProxyService:Userdata(v)
 						else
@@ -1059,7 +1156,10 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 								return v.ClassName
 							end)
 							if s and (not ProxyService.funcMap[v] and ProxyService.funcMap[v.ClassName]) then
-								error("Service '" .. tostring(v) ..  "' is not allowed", 3)
+								ProxyService.funcMap[v] = {}
+								for i in ProxyService.funcMap[v.ClassName] do
+									ProxyService.funcMap[v][v[i]] = Blocked
+								end
 							end
 							t[i] = ProxyService:Instance(v, ProxyService.funcMap[v] or ProxyService.funcMap[v.ClassName])
 						end
@@ -1078,21 +1178,64 @@ function ProxyService:Instance(instance: Instance, customs: table, optionalAllow
 	local realNewIndex = realMethods.__newindex
 
 	realMethods.__newindex = function(self, index, value)
+		if xRenv.type(value) == "function" then
+			return realNewIndex(instance, index, function(...)
+				local args = xRenv.table.pack(...)
+				local function recur(t)
+					for i, v in t do
+						if xRenv.type(v) == "userdata" then
+							if ProxyService.Map[v] then
+								t[i] = ProxyService.Map[v]
+							elseif xRenv.typeof(v) == "RBXScriptSignal" then
+								t[i] = ProxyService:RBXScriptSignal(v)
+								--t[i] = ProxyService:RBXScriptSignal(v, ProxiedInstance, index)
+							elseif xRenv.typeof(v) ~= "Instance" then
+								t[i] = ProxyService:Userdata(v)
+							else
+								local s = xRenv.pcall(function()
+									return v.ClassName
+								end)
+								if s and (not ProxyService.funcMap[v] and ProxyService.funcMap[v.ClassName]) then
+									ProxyService.funcMap[v] = {}
+									for i in ProxyService.funcMap[v.ClassName] do
+										ProxyService.funcMap[v][v[i]] = Blocked
+									end
+								end
+								t[i] = ProxyService:Instance(v, ProxyService.funcMap[v] or ProxyService.funcMap[v.ClassName])
+							end
+						elseif xRenv.type(v) == "table" then
+							t[i] = recur(v)
+						end
+					end
+					return t
+				end
+				args = recur(args)
+
+				xRenv.setfenv(value, Xeno)
+
+				local result = recur(xRenv.table.pack(value(xRenv.table.unpack(args, 1, args.n))))
+				return xRenv.table.unpack(result, 1, result.n)
+			end)
+		end
 		if ProxyService.Map[value] then
 			return realNewIndex(instance, index, ProxyService.Map[value])
 		end
 		return realNewIndex(instance, index, value)
 	end
 
-	realMethods.__metatable = getmetatable(instance)
+	realMethods.__iter = function()
+		xRenv.error("attempt to iterate over a Instance value", 2)
+	end
+
+	realMethods.__metatable = xRenv.getmetatable(instance)
 
 	for _, v in realMethods do 
 		if xRenv.typeof(v) == "function" then 
-			xRenv.pcall(setfenv, v, Xeno)
+			xRenv.pcall(xRenv.setfenv, v, Xeno)
 		end
 	end
 
-	setmetatable(ProxiedInstance, realMethods)
+	xRenv.setmetatable(ProxiedInstance, realMethods)
 
 	ProxyService.Map[instance] = ProxiedInstance
 	ProxyService.Map[ProxiedInstance] = instance
@@ -1104,6 +1247,92 @@ function ProxyService:Get(x)
 	return ProxyService.Map[x]
 end
 --- [PROXY SERVICE] --- END
+
+--[[
+fbase64 = {
+	encode = function(str: string): string
+		return buffer.tostring(EncodingService:Base64Encode(buffer.fromstring(str)))
+	end,
+	decode = function(str: string): string
+		return buffer.tostring(EncodingService:Base64Decode(buffer.fromstring(str)))
+	end,
+}
+]]
+
+do -- luau base64, modified for Xeno. Original: https://gist.github.com/metatablecat/1f6cd6f4495f95700eb1a686de4ebe5e
+	local SEQ = {
+		[0] = "A", "B", "C", "D", "E", "F", "G", "H",
+		"I", "J", "K", "L", "M", "N", "O", "P",
+		"Q", "R", "S", "T", "U", "V", "W", "X",
+		"Y", "Z", "a", "b", "c", "d", "e", "f",
+		"g", "h", "i", "j", "k", "l", "m", "n",
+		"o", "p", "q", "r", "s", "t", "u", "v",
+		"w", "x", "y", "z", "0", "1", "2", "3",
+		"4", "5", "6", "7", "8", "9", "+", "/",
+	}
+
+	local STRING_FAST = {}
+	local INDEX = {[61] = 0, [65] = 0}
+
+	for key, val in ipairs(SEQ) do
+		-- memoization
+		INDEX[string.byte(val)] = key
+	end
+
+	-- string.char has a MASSIVE overhead, its faster to precompute
+	-- the values for performance
+	for i = 0, 255 do
+		local c = string.char(i)
+		STRING_FAST[i] = c
+	end
+
+	fbase64 = { -- Not 100% accurate for not correct string length due to null byte otherwise this would've been used as main base64 lib
+		-- Add Assert?
+		encode = function(str: string)
+			local len = string.len(str)
+			local output = table.create(math.ceil(len/4)*4)
+			local index = 1
+
+			for i = 1, len, 3 do
+				local b0, b1, b2 = string.byte(str, i, i + 2)
+				local b = bit32.lshift(b0, 16) + bit32.lshift(b1 or 0, 8) + (b2 or 0)
+
+				output[index] = SEQ[bit32.extract(b, 18, 6)]
+				output[index + 1] = SEQ[bit32.extract(b, 12, 6)]
+				output[index + 2] = b1 and SEQ[bit32.extract(b, 6, 6)] or "="
+				output[index + 3] = b2 and SEQ[bit32.band(b, 63)] or "="
+
+				index += 4
+			end
+
+			return table.concat(output)
+		end,
+		decode = function(hash: string)
+			-- given a 24 bit word (4 6-bit letters), decode 3 bytes from it
+			local len = string.len(hash)
+			local output = table.create(len * 0.75)
+
+			local index = 1
+			for i = 1, len, 4 do
+				local c0, c1, c2, c3 = string.byte(hash, i, i + 3)
+
+				local b = 
+					bit32.lshift(INDEX[c0], 18)
+					+ bit32.lshift(INDEX[c1], 12)
+					+ bit32.lshift(INDEX[c2], 6)
+					+ (INDEX[c3])
+
+
+				output[index] = STRING_FAST[bit32.extract(b, 16, 8)]
+				output[index + 1] = c2 ~= "=" and STRING_FAST[bit32.extract(b, 8, 8)] or "="
+				output[index + 2] = c3 ~= "=" and STRING_FAST[bit32.band(b, 0xFF)] or "="
+				index += 3
+			end
+
+			return table.concat(output)
+		end,
+	}
+end
 
 --- [UNC SYSTEM] --- START
 ----------------------- SCRIPT
@@ -1127,10 +1356,10 @@ function deepSearch(tbl: {}, toFind: {}, additionalChecker: () -> ... boolean, m
 	for _, target in toFind do
 		for i, v in pairs(tbl) do
 			if Xeno.type(i) == "function" then -- Xeno.type because sandbox
-				xRenv.pcall(setfenv, i, Xeno)
+				xRenv.pcall(xRenv.setfenv, i, Xeno)
 			end
 			if Xeno.type(v) == "function" then
-				xRenv.pcall(setfenv, v, Xeno)
+				xRenv.pcall(xRenv.setfenv, v, Xeno)
 			end
 			if i == target or v == target then
 				return true
@@ -1154,21 +1383,21 @@ function deepSearch(tbl: {}, toFind: {}, additionalChecker: () -> ... boolean, m
 	return false
 end
 
-local function _require(moduleScript: Instance, ...)
+local function _require(moduleScript: Instance) -- ...
 	moduleScript = ProxyService:Get(moduleScript)
 	xRenv.assert(not OverWrittenModules[moduleScript], "The module's bytecode was recently overwritten, call restorescriptbytecode to restore to it's original bytecode.", 3)
 	--xRenv.assert(not moduleScript:IsDescendantOf(ThirdPartyUserService), "Not allowed", 3)
-	local x = xRenv.require(moduleScript, ...)
+	local x = xRenv.require(moduleScript)
 	if xRenv.type(x) == "function" then
-		xRenv.pcall(setfenv, x, Xeno)
+		xRenv.pcall(xRenv.setfenv, x, Xeno)
 	elseif xRenv.type(x) == "table" then
 		xRenv.assert(not deepSearch(x, {xRenv.game, xRenv.workspace}, function(tbl: {})
 			for i, v in tbl do
 				if xRenv.type(i) == "function" then
-					xRenv.pcall(setfenv, i, Xeno)
+					xRenv.pcall(xRenv.setfenv, i, Xeno)
 				end
 				if xRenv.type(v) == "function" then
-					xRenv.pcall(setfenv, v, Xeno)
+					xRenv.pcall(xRenv.setfenv, v, Xeno)
 				end
 			end
 			-- local val = tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"]
@@ -1180,10 +1409,10 @@ local function _require(moduleScript: Instance, ...)
 			xRenv.assert(not deepSearch(getmetatable(x), {xRenv.game, xRenv.workspace}, function(tbl: {})
 				for i, v in tbl do
 					if xRenv.type(i) == "function" then
-						xRenv.pcall(setfenv, i, Xeno)
+						xRenv.pcall(xRenv.setfenv, i, Xeno)
 					end
 					if xRenv.type(v) == "function" then
-						xRenv.pcall(setfenv, v, Xeno)
+						xRenv.pcall(xRenv.setfenv, v, Xeno)
 					end
 				end
 				local _, val = xRenv.pcall(function()return tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"] end)
@@ -1195,79 +1424,27 @@ local function _require(moduleScript: Instance, ...)
 	return x
 end
 
-local XFRenv = nil
---shared.__Xeno_G = {}
 local __Xeno_G = {}
 
+local frenv = {}
+xRenv.setmetatable(frenv, {
+	__index = function(self, index: string)
+		index = index:gsub('\0', '')
+		if index == 'require' then
+			return _require
+		elseif index == '_G' then
+			return __Xeno_G
+		end
+		return fenv[index]
+	end,
+	__newindex = function(self)
+		xRenv.error("Not allowed to modify getrenv result")
+	end,
+	__metatable = "The metatable is locked"
+})
+
 function Xeno.getrenv()
-	if XFRenv then
-		return XFRenv
-	end
-
-	XFRenv = {
-		["print"] = print, ["warn"] = warn, ["error"] = error, ["assert"] = assert, ["collectgarbage"] = getfenv().collectgarbage, ["require"] = _require, --x
-		["select"] = select, ["tonumber"] = tonumber, ["tostring"] = tostring, ["type"] = Xeno.type, ["xpcall"] = xpcall,
-		["pairs"] = pairs, ["next"] = next, ["ipairs"] = ipairs, ["newproxy"] = newproxy, ["rawequal"] = rawequal, ["rawget"] = rawget,
-		["rawset"] = rawset, ["rawlen"] = rawlen, ["gcinfo"] = gcinfo, 
-		["_G"] = __Xeno_G --[[shared.__Xeno_G]], ["shared"] = shared, ["RaycastParams"] = Xeno.RaycastParams, ["Ray"] = Xeno.Ray,
-
-		["coroutine"] = {
-			["create"] = coroutine["create"], ["resume"] = coroutine["resume"], ["running"] = coroutine["running"],
-			["status"] = coroutine["status"], ["wrap"] = coroutine["wrap"], ["yield"] = coroutine["yield"],
-		},
-
-		["bit32"] = {
-			["arshift"] = bit32["arshift"], ["band"] = bit32["band"], ["bnot"] = bit32["bnot"], ["bor"] = bit32["bor"], ["btest"] = bit32["btest"],
-			["extract"] = bit32["extract"], ["lshift"] = bit32["lshift"], ["replace"] = bit32["replace"], ["rshift"] = bit32["rshift"], ["xor"] = bit32["xor"],
-		},
-
-		["math"] = {
-			["abs"] = math["abs"], ["acos"] = math["acos"], ["asin"] = math["asin"], ["atan"] = math["atan"], ["atan2"] = math["atan2"], ["ceil"] = math["ceil"],
-			["cos"] = math["cos"], ["cosh"] = math["cosh"], ["deg"] = math["deg"], ["exp"] = math["exp"], ["floor"] = math["floor"], ["fmod"] = math["fmod"],
-			["frexp"] = math["frexp"], ["ldexp"] = math["ldexp"], ["log"] = math["log"], ["log10"] = math["log10"], ["max"] = math["max"], ["min"] = math["min"],
-			["modf"] = math["modf"], ["pow"] = math["pow"], ["rad"] = math["rad"], ["random"] = math["random"], ["randomseed"] = math["randomseed"],
-			["sin"] = math["sin"], ["sinh"] = math["sinh"], ["sqrt"] = math["sqrt"], ["tan"] = math["tan"], ["tanh"] = math["tanh"]
-		},
-
-		["string"] = {
-			["byte"] = string["byte"], ["char"] = string["char"], ["find"] = string["find"], ["format"] = string["format"], ["gmatch"] = string["gmatch"],
-			["gsub"] = string["gsub"], ["len"] = string["len"], ["lower"] = string["lower"], ["match"] = string["match"], ["pack"] = string["pack"],
-			["packsize"] = string["packsize"], ["rep"] = string["rep"], ["reverse"] = string["reverse"], ["sub"] = string["sub"],
-			["unpack"] = string["unpack"], ["upper"] = string["upper"],
-		},
-
-		["table"] = {
-			["clone"] = table.clone, ["concat"] = table.concat, ["insert"] = table.insert, ["pack"] = table.pack, ["remove"] = table.remove, ["sort"] = table.sort,
-			["unpack"] = table.unpack,
-		},
-
-		["utf8"] = {
-			["char"] = utf8["char"], ["charpattern"] = utf8["charpattern"], ["codepoint"] = utf8["codepoint"], ["codes"] = utf8["codes"],
-			["len"] = utf8["len"], ["nfdnormalize"] = utf8["nfdnormalize"], ["nfcnormalize"] = utf8["nfcnormalize"],
-		},
-
-		["os"] = {
-			["clock"] = os["clock"], ["date"] = os["date"], ["difftime"] = os["difftime"], ["time"] = os["time"],
-		},
-
-		["delay"] = delay, ["elapsedTime"] = getfenv().elapsedTime, ["spawn"] = spawn, ["tick"] = tick, ["time"] = time, ["typeof"] = Xeno.typeof,
-		["settings"] = Xeno.settings, ["UserSettings"] = Xeno.UserSettings, ["version"] = getfenv().version, ["wait"] = wait, ["_VERSION"] = _VERSION,
-
-		["task"] = {
-			["defer"] = task["defer"], ["delay"] = task["delay"], ["spawn"] = task["spawn"], ["wait"] = task["wait"], ["cancel"] = task["cancel"]
-		},
-
-		["debug"] = {
-			["traceback"] = xRenv.debug["traceback"], ["profilebegin"] = xRenv.debug["profilebegin"], ["profileend"] = xRenv.debug["profileend"],
-		},
-
-		["game"] = Xeno.game, ["workspace"] = Xeno.workspace, ["Game"] = Xeno.game, ["Workspace"] = Xeno.workspace,
-
-		["getmetatable"] = getmetatable, ["setmetatable"] = setmetatable
-	}
-	table.freeze(XFRenv)
-
-	return XFRenv
+	return frenv
 end
 
 function Xeno.type(x)
@@ -1353,19 +1530,25 @@ function Xeno.require(moduleScript: Instance, unlockSiblingsAndDescendants: bool
 			end
 		end
 	end
+	
+	local _corepackages = xRenv.game:GetService("CorePackages")
+	local _coregui = xRenv.game:GetService("CoreGui")
+	if moduleScript:IsDescendantOf(_corepackages) or moduleScript:IsDescendantOf(_coregui) then
+		error('Not Allowed', 3)
+	end
 
 	if UnlockedModules[moduleScript] then
 		local x = xRenv.require(moduleScript)
 		if xRenv.type(x) == "function" then
-			xRenv.pcall(setfenv, x, Xeno)
+			xRenv.pcall(xRenv.setfenv, x, Xeno)
 		elseif xRenv.type(x) == "table" then
 			xRenv.assert(not deepSearch(x, {xRenv.game, xRenv.workspace}, function(tbl: {})
 				for i, v in tbl do
 					if xRenv.type(i) == "function" then
-						xRenv.pcall(setfenv, i, Xeno)
+						xRenv.pcall(xRenv.setfenv, i, Xeno)
 					end
 					if xRenv.type(v) == "function" then
-						xRenv.pcall(setfenv, v, Xeno)
+						xRenv.pcall(xRenv.setfenv, v, Xeno)
 					end
 				end
 				local _, val = xRenv.pcall(function()return tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"] end)
@@ -1376,10 +1559,10 @@ function Xeno.require(moduleScript: Instance, unlockSiblingsAndDescendants: bool
 				xRenv.assert(not deepSearch(getmetatable(x), {xRenv.game, xRenv.workspace}, function(tbl: {})
 					for i, v in tbl do
 						if xRenv.type(i) == "function" then
-							xRenv.pcall(setfenv, i, Xeno)
+							xRenv.pcall(xRenv.setfenv, i, Xeno)
 						end
 						if xRenv.type(v) == "function" then
-							xRenv.pcall(setfenv, v, Xeno)
+							xRenv.pcall(xRenv.setfenv, v, Xeno)
 						end
 					end
 					local _, val = xRenv.pcall(function()return tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"] end)
@@ -1395,15 +1578,15 @@ function Xeno.require(moduleScript: Instance, unlockSiblingsAndDescendants: bool
 
 	local x = xRenv.require(moduleScript)
 	if xRenv.type(x) == "function" then
-		xRenv.pcall(setfenv, x, Xeno)
+		xRenv.pcall(xRenv.setfenv, x, Xeno)
 	elseif xRenv.type(x) == "table" then
 		xRenv.assert(not deepSearch(x, {xRenv.game, xRenv.workspace}, function(tbl: {})
 			for i, v in tbl do
 				if xRenv.type(i) == "function" then
-					xRenv.pcall(setfenv, i, Xeno)
+					xRenv.pcall(xRenv.setfenv, i, Xeno)
 				end
 				if xRenv.type(v) == "function" then
-					xRenv.pcall(setfenv, v, Xeno)
+					xRenv.pcall(xRenv.setfenv, v, Xeno)
 				end
 			end
 			local _, val = xRenv.pcall(function()return tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"] end)
@@ -1414,10 +1597,10 @@ function Xeno.require(moduleScript: Instance, unlockSiblingsAndDescendants: bool
 			xRenv.assert(not deepSearch(getmetatable(x), {xRenv.game, xRenv.workspace}, function(tbl: {})
 				for i, v in tbl do
 					if xRenv.type(i) == "function" then
-						xRenv.pcall(setfenv, i, Xeno)
+						xRenv.pcall(xRenv.setfenv, i, Xeno)
 					end
 					if xRenv.type(v) == "function" then
-						xRenv.pcall(setfenv, v, Xeno)
+						xRenv.pcall(xRenv.setfenv, v, Xeno)
 					end
 				end
 				local _, val = xRenv.pcall(function()return tbl["game"] or tbl["Game"] or tbl["workspace"] or tbl["Workspace"] end)
@@ -1652,7 +1835,12 @@ function Xeno.setscriptable(instance: Instance, property: string, scriptable: bo
 	end
 
 	local wasScriptable = Xeno.isscriptable(instance, property)
-	if wasScriptable == scriptable then return scriptable end
+	if wasScriptable == scriptable then
+		if scriptables[instance.ClassName] and scriptables[instance.ClassName][property] then
+			rSetScriptable(ProxyService:Get(instance), property, scriptable)
+		end
+		return scriptable
+	end
 
 	rSetScriptable(ProxyService:Get(instance), property, scriptable)
 
@@ -1694,6 +1882,7 @@ function Xeno.getproperties(instance: Instance)
 	end
 	return properties
 end
+Xeno.Xeno.getproperties = Xeno.getproperties
 
 function Xeno.gethiddenproperties(instance: Instance)
 	xRenv.assert(Xeno.typeof(instance) == "Instance", "invalid argument #1 to 'gethiddenproperties' (Instance expected, got " .. Xeno.typeof(instance) .. ") ", 3)
@@ -1726,6 +1915,10 @@ function Xeno.getrbxsignals(instance: Instance)
 	end
 	return signals
 end
+Xeno.getrbxscriptsignals = Xeno.getrbxsignals
+Xeno.Xeno.getrbxsignals = Xeno.getrbxsignals
+Xeno.Xeno.getrbxscriptsignals = Xeno.getrbxsignals
+
 
 function Xeno.getfunctions(instance: Instance)
 	local p = instance
@@ -1747,13 +1940,17 @@ function Xeno.getfunctions(instance: Instance)
 	end
 	return functions
 end
+Xeno.getinstancefunctions = Xeno.getfunctions
+Xeno.Xeno.getfunctions = Xeno.getfunctions
+Xeno.Xeno.getinstancefunctions = Xeno.getfunctions
+
 
 function Xeno.loadstring(content: string, chunkName: string?): () -> ... any
 	xRenv.assert(xRenv.type(content) == "string", "invalid argument #1 to 'loadstring' (string expected, got " .. xRenv.type(content) .. ") ", 3)
 
 	local name = "loadstring:" .. math.random(1, 1000000)
 	if xRenv.type(chunkName) == "string" then
-		name = name .. tostring(chunkName) -- better be random otherwise if you call loadstring too many times with that same chunk name; will be chaos!
+		name = name .. tostring(chunkName) -- better be random otherwise if you call loadstring too many times with that same chunk name; will be broken
 	end
 
 	local module = xRenv.Instance.new("ModuleScript") --xRenv.Instance.fromExisting(Modules[math.random(1, #Modules)])
@@ -1766,10 +1963,10 @@ function Xeno.loadstring(content: string, chunkName: string?): () -> ... any
 	}, nil, nil, true)
 
 	if not success then
-		if status == 0x190 then
+		if status == 400 then
 			return nil, tostring(result)
 		end
-		if status == 0x1f4 then
+		if status == 500 then
 			return nil, "Server failed to process loadstring. View the logs for more information."
 		end
 		return nil, "loadstring request to the server failed."
@@ -1780,14 +1977,14 @@ function Xeno.loadstring(content: string, chunkName: string?): () -> ... any
 
 	local function clearMCache()
 		for _, v in pairs(modulesCache) do
-			task.spawn(function()
-				local ov = createInstancePointer(v)
-				RServer({XFS.RestoreScriptBytecode, ov.Name}, true)
-				ov:Destroy()
-				v:Destroy()
-			end)
+			--task.spawn(function()
+			--local ov = createInstancePointer(v) -- No longer needed as new instance is created
+			--RServer({XFS.RestoreScriptBytecode, ov.Name}, true)
+			--ov:Destroy()
+			v:Destroy()
+			--end)
 		end
-		table.clear(modulesCache)
+		xRenv.table.clear(modulesCache)
 	end
 
 	while true do
@@ -1798,8 +1995,8 @@ function Xeno.loadstring(content: string, chunkName: string?): () -> ... any
 		if success and xRenv.type(loadstrFuncContainer) == "table" and xRenv.type(loadstrFuncContainer[XENO_PID]) == "function" then
 			clearMCache()
 			local loadstrFunc = loadstrFuncContainer[XENO_PID]
-			task.delay(.01, clearMCache)
-			setfenv(loadstrFunc, getfenv(xRenv.debug.info(2, 'f')))
+			--task.delay(.01, clearMCache)
+			xRenv.setfenv(loadstrFunc, xRenv.getfenv(xRenv.debug.info(2, 'f')))
 			return loadstrFunc
 		end
 
@@ -1825,7 +2022,7 @@ function Xeno.loadstring(content: string, chunkName: string?): () -> ... any
 			name .. "&p=" .. XENO_PID
 		}, nil, nil, true)
 
-		table.insert(modulesCache, module)
+		xRenv.table.insert(modulesCache, module)
 	end
 end
 
@@ -1842,84 +2039,12 @@ end
 
 local pRaycastParams = RaycastParams
 local pRay = Ray
+local pOverlapParams = OverlapParams
 
 Xeno.RaycastParams = ProxyService:Userdata(pRaycastParams)
 Xeno.Ray = ProxyService:Userdata(pRay)
+Xeno.OverlapParams = ProxyService:Userdata(pOverlapParams)
 
-do -- luau base64, modified for Xeno. Original: https://gist.github.com/metatablecat/1f6cd6f4495f95700eb1a686de4ebe5e
-	local SEQ = {
-		[0] = "A", "B", "C", "D", "E", "F", "G", "H",
-		"I", "J", "K", "L", "M", "N", "O", "P",
-		"Q", "R", "S", "T", "U", "V", "W", "X",
-		"Y", "Z", "a", "b", "c", "d", "e", "f",
-		"g", "h", "i", "j", "k", "l", "m", "n",
-		"o", "p", "q", "r", "s", "t", "u", "v",
-		"w", "x", "y", "z", "0", "1", "2", "3",
-		"4", "5", "6", "7", "8", "9", "+", "/",
-	}
-
-	local STRING_FAST = {}
-	local INDEX = {[61] = 0, [65] = 0}
-
-	for key, val in ipairs(SEQ) do
-		-- memoization
-		INDEX[string.byte(val)] = key
-	end
-
-	-- string.char has a MASSIVE overhead, its faster to precompute
-	-- the values for performance
-	for i = 0, 255 do
-		local c = string.char(i)
-		STRING_FAST[i] = c
-	end
-
-	fbase64 = { -- Not 100% accurate for not correct string length due to null byte otherwise this would've been used as main base64 lib
-		-- Add Assert?
-		encode = function(str: string)
-			local len = string.len(str)
-			local output = table.create(math.ceil(len/4)*4)
-			local index = 1
-
-			for i = 1, len, 3 do
-				local b0, b1, b2 = string.byte(str, i, i + 2)
-				local b = bit32.lshift(b0, 16) + bit32.lshift(b1 or 0, 8) + (b2 or 0)
-
-				output[index] = SEQ[bit32.extract(b, 18, 6)]
-				output[index + 1] = SEQ[bit32.extract(b, 12, 6)]
-				output[index + 2] = b1 and SEQ[bit32.extract(b, 6, 6)] or "="
-				output[index + 3] = b2 and SEQ[bit32.band(b, 63)] or "="
-
-				index += 4
-			end
-
-			return table.concat(output)
-		end,
-		decode = function(hash: string)
-			-- given a 24 bit word (4 6-bit letters), decode 3 bytes from it
-			local len = string.len(hash)
-			local output = table.create(len * 0.75)
-
-			local index = 1
-			for i = 1, len, 4 do
-				local c0, c1, c2, c3 = string.byte(hash, i, i + 3)
-
-				local b = 
-					bit32.lshift(INDEX[c0], 18)
-					+ bit32.lshift(INDEX[c1], 12)
-					+ bit32.lshift(INDEX[c2], 6)
-					+ (INDEX[c3])
-
-
-				output[index] = STRING_FAST[bit32.extract(b, 16, 8)]
-				output[index + 1] = c2 ~= "=" and STRING_FAST[bit32.extract(b, 8, 8)] or "="
-				output[index + 2] = c3 ~= "=" and STRING_FAST[bit32.band(b, 0xFF)] or "="
-				index += 3
-			end
-
-			return table.concat(output)
-		end,
-	}
-end
 
 local SupportedHTTPMethods = {
 	["GET"] = 0, 
@@ -1984,6 +2109,12 @@ function Xeno.request(options: {Url: string, Method: string?, body: string?, Hea
 		["PlaceId"] = tostring(game.PlaceId)
 	})
 
+	local url = options.Url
+	if url:lower():find("localhost:3110") then
+		xRenv.error("Not allowed to send request to Xeno server", 3)
+		return
+	end
+
 	local body, success, headers = RServer({0, tostring(options.Body), Urls.Server ..
 		"/rq?c=" ..
 		SupportedHTTPMethods[options.Method] --[[Method ID]] ..
@@ -1996,7 +2127,6 @@ function Xeno.request(options: {Url: string, Method: string?, body: string?, Hea
 			Success = false,
 			StatusMessage = "Xeno Server Error: " .. tostring(body),
 			StatusCode = 403,
-			HttpError = Enum.HttpError.Unknown
 		}
 	end
 
@@ -2007,20 +2137,16 @@ function Xeno.request(options: {Url: string, Method: string?, body: string?, Hea
 			StatusMessage = "Server Response not found in Headers. " .. tostring(body),
 			StatusCode = 417,
 			Body = body,
-			HttpError = Enum.HttpError.NetFail
 		}
 	end
 
 	local response = HttpService:JSONDecode(xenoR)
-
-	local success, EnumHttpError = xRenv.pcall(function()
-		return Enum.HttpError[response[2]]
-	end)
+	local statusCode = tonumber(response[1]) or 400
 
 	return {
-		StatusCode = tonumber(response[1]) or 403,
+		Success = statusCode >= 200 and statusCode < 300,
+		StatusCode = statusCode,
 		StatusMessage = response[2],
-		HttpError = (success and EnumHttpError) or Enum.HttpError.Unknown,
 		Body = body,
 		Version = response[3],
 		Headers = response[4]
@@ -2049,10 +2175,9 @@ end
 
 function Xeno.HttpPost(url: string, body: {}, contentType: string): string?
 	xRenv.assert(xRenv.type(url) == "string", "invalid argument #1 to 'HttpPost' (string expected, got " .. xRenv.type(url) .. ") ", 3)
-	if xRenv.type(contentType) ~= nil then
-		xRenv.assert(xRenv.type(contentType) == "string", "invalid argument #3 to 'HttpPost' (string expected, got " .. xRenv.type(contentType) .. ") ", 3)
-	end
+
 	contentType = contentType or "application/json"
+	xRenv.assert(xRenv.type(contentType) == "string", "invalid argument #3 to 'HttpPost' (string expected, got " .. xRenv.type(contentType) .. ") ", 3)
 
 	return Xeno.request({
 		Url = url,
@@ -2070,19 +2195,19 @@ local gFuncMap = ProxyService.funcMap[xRenv.game]
 gFuncMap.HttpGet = function(self, ...)
 	return Xeno.HttpGet(...)
 end
-setfenv(gFuncMap.HttpGet, Xeno)
+xRenv.setfenv(gFuncMap.HttpGet, Xeno)
 gFuncMap.HttpGetAsync = gFuncMap.HttpGet
 
 gFuncMap.HttpPost = function(self, ...)
 	return Xeno.HttpPost(...)
 end
-setfenv(gFuncMap.HttpPost, Xeno)
+xRenv.setfenv(gFuncMap.HttpPost, Xeno)
 gFuncMap.HttpPostAsync = gFuncMap.HttpPost
 
 gFuncMap.GetObjects = function(self, asset: number? | string?)
 	return {Xeno.game:GetService("InsertService"):LoadLocalAsset((xRenv.typeof(asset) == "number" and "rbxassetid://" .. asset) or asset)}
 end
-setfenv(gFuncMap.GetObjects, Xeno)
+xRenv.setfenv(gFuncMap.GetObjects, Xeno)
 ------------------------------------------------
 -- FILESYSTEM
 local FilesystemErrs = {
@@ -2118,7 +2243,7 @@ end
 local function rListFiles(path: string) : {}
 	local result, success = RServer({XFS.ListFiles, path})
 	if not success then
-		error(GetFileSystemError(result), 3)
+		xRenv.error(GetFileSystemError(result), 3)
 	end
 	return result
 end
@@ -2126,7 +2251,7 @@ end
 local function rIsFolder(path: string) : boolean
 	local result, success = RServer({XFS.GetFileType, path})
 	if not success then
-		error(GetFileSystemError(result), 3)
+		xRenv.error(GetFileSystemError(result), 3)
 	end
 	result = tonumber(result) -- or result
 	if result == FileType.Directory then
@@ -2138,7 +2263,7 @@ end
 local function rIsFile(path: string) : boolean
 	local result, success = RServer({XFS.GetFileType, path})
 	if not success then
-		error(GetFileSystemError(result), 3)
+		xRenv.error(GetFileSystemError(result), 3)
 	end
 	result = tonumber(result)
 	if result == FileType.File then
@@ -2249,10 +2374,60 @@ do
 	end)
 end
 
-local function normalize_path(path: string): string
-	if (path:sub(2, 2) ~= '/') then path = './' .. path end
-	if (path:sub(1, 1) == '/') then path = '.' .. path end
+local function normalize_path(path)
+	path = tostring(path or "")
+	if #path == 0 then return "./" end
+
+	local first = path:sub(1,1)
+	if first ~= "." and first ~= "/" then
+		path = "./" .. path
+	end
+
 	return path
+end
+
+local function normalize_path2(path)
+	path = tostring(path or "")
+	if path == "" then return "." end
+
+	local isAbsolute = path:sub(1,1) == "/"
+	local hasTrailing = (#path > 1) and path:sub(-1) == "/"
+
+	local parts = {}
+	for part in path:gmatch("[^/]+") do
+		table.insert(parts, part)
+	end
+
+	local stack = {}
+	for _, part in ipairs(parts) do
+		if part == "." then
+			-- skip
+		elseif part == ".." then
+			if #stack > 0 and stack[#stack] ~= ".." then
+				table.remove(stack)
+			else
+				if not isAbsolute then
+					table.insert(stack, "..")
+				end
+			end
+		else
+			table.insert(stack, part)
+		end
+	end
+
+	local result = table.concat(stack, "/")
+
+	if isAbsolute then
+		result = "/" .. (result ~= "" and result or "")
+	end
+
+	if result == "" then
+		result = isAbsolute and "/" or "."
+	elseif hasTrailing and result:sub(-1) ~= "/" then
+		result = result .. "/"
+	end
+
+	return result
 end
 
 local function getUnsaved(funcId: number, path: string): {} & number
@@ -2264,11 +2439,12 @@ local function getUnsaved(funcId: number, path: string): {} & number
 	end
 end
 
-local function getSaved(path: string): {}
+local function getSaved(path: string)
 	local saves = VirtualFiles.Files
-	for i, fileInfo in next, saves do
-		if fileInfo[1] == path or "./" .. tostring(fileInfo[1]) == path or normalize_path(tostring(fileInfo[1])) == path then
-			return saves[i] -- return true, saves[i]
+	for i, fileInfo in ipairs(saves) do
+		local fp = tostring(fileInfo[1])
+		if fp == path or ("./" .. fp) == path or normalize_path(fp) == path then
+			return saves[i], i
 		end
 	end
 end
@@ -2283,6 +2459,9 @@ end
 function Xeno.readfile(path: string): string?
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'readfile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
 	-- if writefile was recently called on the given path, return the pending save content.
+
+	path = normalize_path2(path)
+
 	local unsavedFile = getUnsaved(XFS.WriteFile, path)
 	if unsavedFile then
 		return unsavedFile[3]
@@ -2290,7 +2469,7 @@ function Xeno.readfile(path: string): string?
 
 	local result, success = RServer{XFS.ReadFile, path}
 	if not success then
-		error(GetFileSystemError(result), 3)
+		xRenv.error(GetFileSystemError(result), 3)
 	end
 
 	return result
@@ -2299,6 +2478,8 @@ end
 function Xeno.writefile(path: string, content: string)
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'writefile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
 	xRenv.assert(xRenv.type(content) == "string", "invalid argument #2 to 'writefile' (string expected, got " .. xRenv.type(content) .. ") ", 3)
+
+	path = normalize_path2(path)
 
 	-- cancel deletion of file
 	local unsavedFile, index = getUnsaved(XFS.DelFile, path)
@@ -2324,6 +2505,8 @@ function Xeno.appendfile(path: string, content: string)
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'appendfile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
 	xRenv.assert(xRenv.type(content) == "string", "invalid argument #2 to 'appendfile' (string expected, got " .. xRenv.type(content) .. ") ", 3)
 
+	path = normalize_path2(path)
+
 	local unsavedFile = getUnsaved(XFS.WriteFile, path)
 	if unsavedFile then
 		unsavedFile[3] = unsavedFile[3] .. content
@@ -2332,7 +2515,7 @@ function Xeno.appendfile(path: string, content: string)
 
 	local result, success = RServer{XFS.ReadFile, path}
 	if not success then
-		error(GetFileSystemError(result), 3)
+		xRenv.error(GetFileSystemError(result), 3)
 	end
 
 	Xeno.writefile(path, result .. content)
@@ -2340,13 +2523,16 @@ end
 
 function Xeno.loadfile(path: string): () -> ... any
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'loadfile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
+
 	local source = Xeno.readfile(path)
 	do
 		if (source == "" or source == " ") then
 			return function(...) end
 		end
 		local func, err = Xeno.loadstring(source, path)
-		xRenv.pcall(setfenv, func, getfenv(xRenv.debug.info(2, 'f'))) -- func might be nil if theres compiler error.
+		xRenv.pcall(xRenv.setfenv, func, xRenv.getfenv(xRenv.debug.info(2, 'f'))) -- func might be nil if theres compiler error.
 		return func, err
 	end
 end
@@ -2354,6 +2540,9 @@ Xeno.dofile = Xeno.loadfile
 
 function Xeno.isfolder(path: string): boolean
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'isfolder' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
+
 	if getUnsaved(XFS.DelFolder, path) then
 		return false
 	end
@@ -2370,6 +2559,9 @@ end
 
 function Xeno.isfile(path: string): boolean
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'isfile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
+
 	if getUnsaved(XFS.DelFile, path) then
 		return false
 	end
@@ -2386,6 +2578,8 @@ end
 
 function Xeno.makefolder(path: string)
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'makefolder' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
 
 	local f, i = getUnsaved(XFS.DelFolder, path)
 	if f then
@@ -2404,6 +2598,8 @@ end
 
 function Xeno.delfolder(path: string)
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'delfolder' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
 
 	local f, i = getUnsaved(XFS.MakeFolder, path)
 	if f then
@@ -2424,6 +2620,8 @@ end
 function Xeno.delfile(path: string)
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'delfile' (string expected, got " .. xRenv.type(path) .. ") ", 3)
 
+	path = normalize_path2(path)
+
 	local f, i = getUnsaved(XFS.WriteFile, path)
 	if f then
 		table.remove(VirtualFiles.ChangesQueue, i)
@@ -2442,46 +2640,32 @@ end
 function Xeno.listfiles(path: string): {}
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'listfiles' (string expected, got " .. xRenv.type(path) .. ") ", 3)
 
+	path = normalize_path2(path)
 	path = normalize_path(path)
 	if path:sub(-1) ~= '/' then path = path .. '/' end
 
-	local files = {}
+	local filesSet = {}
 
-	for _, file in pairs(VirtualFiles.Files) do
-		table.insert(files, normalize_path(file[1]))
+	for _, file in ipairs(VirtualFiles.Files) do
+		local normalized = normalize_path(tostring(file[1]))
+		filesSet[normalized] = true
 	end
 
-	for i, fpath in pairs(files) do
-		for _, file in pairs(VirtualFiles.ChangesQueue) do
-			if normalize_path(file[2]) == fpath and file[1] == XFS.DelFile or file[1] == XFS.DelFolder then
-				table.remove(files, i)
-				break
-			end
+	for _, change in ipairs(VirtualFiles.ChangesQueue) do
+		local cid = change[1]
+		local cpath = normalize_path(tostring(change[2]))
+
+		if cid == XFS.DelFile or cid == XFS.DelFolder then
+			filesSet[cpath] = nil
+		else
+			filesSet[cpath] = true
 		end
 	end
-
-	for _, file in pairs(VirtualFiles.ChangesQueue) do -- Unsaved Files
-		if file[1] == XFS.DelFile or file[1] == XFS.DelFolder then
-			continue
-		end
-		table.insert(files, normalize_path(file[2]))
-	end
-
 	local dirFiles = {}
-
-	for _, fpath in pairs(files) do
-		fpath = fpath:gsub('\\', '/')
-		if fpath:sub(1, #path) == path then
-			table.insert(dirFiles, fpath)
-		end
-	end
-
-	for i, fpath in pairs(dirFiles) do
-		for i2, v in pairs(dirFiles) do -- duplicate check
-			if v == fpath and i ~= i2 then
-				table.remove(dirFiles, i2)
-				break
-			end
+	for fpath, _ in pairs(filesSet) do
+		local fp = fpath:gsub('\\', '/')
+		if fp:sub(1, #path) == path then
+			table.insert(dirFiles, fp)
 		end
 	end
 
@@ -2490,6 +2674,8 @@ end
 
 function Xeno.getcustomasset(path: string): string?
 	xRenv.assert(xRenv.type(path) == "string", "invalid argument #1 to 'getcustomasset' (string expected, got " .. xRenv.type(path) .. ") ", 3)
+
+	path = normalize_path2(path)
 
 	local f, i = getUnsaved(XFS.WriteFile, path)
 	if f then
@@ -2511,7 +2697,7 @@ function Xeno.getcustomasset(path: string): string?
 	if success then
 		return result
 	end
-	error(result, 3)
+	xRenv.error(result, 3)
 end
 -- FILESYSTEM END
 ------------------------------------------------
@@ -2523,7 +2709,7 @@ end
 function Xeno.hookfunction(funcX: () -> ...any, funcY: () -> ...any): () -> ...any
 	xRenv.assert(xRenv.type(funcX) == "function", "invalid argument #1 to 'hookfunction' (function expected, got " .. xRenv.type(funcX) .. ") ", 3)
 	xRenv.assert(xRenv.type(funcY) == "function", "invalid argument #2 to 'hookfunction' (function expected, got " .. xRenv.type(funcY) .. ") ", 3)
-	local env = getfenv(xRenv.debug.info(2, 'f'))
+	local env = xRenv.getfenv(xRenv.debug.info(2, 'f'))
 	for i, v in env do
 		if v == funcX then
 			env[i] = funcY
@@ -2570,7 +2756,7 @@ end
 function Xeno.newlclosure(func: () -> ...any): () -> ...any  -- thanks to razzoni for the improvement of this function
 	xRenv.assert(xRenv.type(func) == "function", "invalid argument #1 to 'newlclosure' (function expected, got " .. xRenv.type(func) .. ") ", 3)
 	local closure = function(...) return func(...) end
-	setfenv(closure, getfenv(func));
+	xRenv.setfenv(closure, xRenv.getfenv(func));
 	return closure
 end
 
@@ -2588,7 +2774,7 @@ function Xeno.isexecutorclosure(func: () -> ...any): boolean
 		return #xRenv.debug.info(func, 'n') < 1
 	end
 	return xRenv.debug.info(func, 's') == xRenv.script:GetFullName() or
-		(Xeno.typeof(getfenv(func).script) == "Instance" and getfenv(func).script:GetFullName() == "LocalScript")
+		(Xeno.typeof(xRenv.getfenv(func).script) == "Instance" and xRenv.getfenv(func).script:GetFullName() == "LocalScript")
 end
 Xeno.checkclosure = Xeno.isexecutorclosure
 Xeno.isourclosure = Xeno.isexecutorclosure
@@ -2606,7 +2792,7 @@ end
 Xeno.queueonteleport = Xeno.queue_on_teleport
 
 function Xeno.setclipboard(content)
-	xRenv.assert(content ~= nil, "Attempt to set nil to clipboard", 3)
+	xRenv.assert(content ~= nil, "setclipboard content cannot be nil", 3)
 	content = tostring(content)
 	if #content < 1 then return end
 	RServer {
@@ -2624,9 +2810,12 @@ function Xeno.hookinstance(i1: InstanceToHook, i2: Instance)
 	i2 = ProxyService:Get(i2)
 	xRenv.assert(xRenv.typeof(i1) == "Instance", "invalid argument #1 to 'hookinstance' (Instance expected, got " .. xRenv.typeof(i1) .. ") ", 3)
 	xRenv.assert(xRenv.typeof(i2) == "Instance", "invalid argument #2 to 'hookinstance' (Instance expected, got " .. xRenv.typeof(i2) .. ") ", 3)
+
 	local success, result = xRenv.pcall(function() return Xeno.game:FindService(i1.ClassName) end)
-	xRenv.assert(not (success and result), "Can't hook a service", 3)
+	xRenv.assert(not (success and result), "Can't hook a Roblox Service", 3)
+
 	xRenv.assert(i1 ~= xRenv.game, "Can't hook DataModel", 3)
+
 	local i1ptr = createInstancePointer(i1)
 	local i2ptr = createInstancePointer(i2)
 	local options: HttpRequestOptions = {
@@ -2683,7 +2872,11 @@ local saveinstanceF = nil
 function Xeno.saveinstance(options)
 	options = options or {}
 	xRenv.assert(xRenv.type(options) == "table", "invalid argument #1 to 'saveinstance' (table expected, got " .. xRenv.type(options) .. ") ", 3)
+
+	options.SafeMode = options.SafeMode or false
+
 	saveinstanceF = saveinstanceF or Xeno.loadstring(Xeno.HttpGet("https://raw.githubusercontent.com/luau/SynSaveInstance/main/saveinstance.luau", true), "saveinstance")()
+
 	return saveinstanceF(options)
 end
 Xeno.savegame = Xeno.saveinstance
@@ -2752,30 +2945,24 @@ function Xeno.isnetworkowner(Part)
 	return Part.ReceiveAge == 0
 end
 
-local fpscap = math.huge
-
 function Xeno.setfpscap(cap)
 	cap = tonumber(cap)
-	xRenv.assert(xRenv.type(tonumber(cap)) == "number", "invalid argument #1 to 'setfpscap' (number expected, got " .. xRenv.type(cap) .. ")", 3)
-	if cap < 1 then cap = math.huge end
-	fpscap = cap
+	xRenv.assert(xRenv.type(cap) == "number", "invalid argument #1 to 'setfpscap' (number expected, got " .. xRenv.type(cap) .. ")", 3)
+	if cap <= 0 then
+		cap = math.huge
+	end
+	UserSettings().GameSettings.FramerateCap = cap
 end
 
-local t = tick()
-xRenv.game:GetService("RunService").RenderStepped:Connect(function()
-	while t + 1 / fpscap > tick() do end
-	t = tick()
-	task.wait()
-end)
-
-function Xeno.getfpscap(): number
-	return fpscap
+function Xeno.getfpscap(cap)
+	return UserSettings().GameSettings.FramerateCap
 end
 
-function Xeno.getscripthash(Script: ProxiedInstance): string? -- !!
+
+function Xeno.getscripthash(Script: Instance --[[ProxiedInstance]]): string? -- !!
 	xRenv.assert(Xeno.typeof(Script) == "Instance", "invalid argument #1 to 'getscripthash' (Instance expected, got " .. Xeno.typeof(Script) .. ")", 3)
-	xRenv.assert(Script.ClassName == "LocalScript" or Script.ClassName == "ModuleScript", 
-		"invalid 'ClassName' for 'Instance' #1 to 'setscriptbytecode' (LocalScript or ModuleScript expected, got '" .. Script.ClassName .. "') ", 3)
+	xRenv.assert(Script:IsA("LuaSourceContainer"), "invalid argument #1 to 'getscripthash' (Must be a LuaSourceContainer)", 3)
+
 	return Xeno.crypt.hash(Xeno.getscriptbytecode(Script), 'sha-256');
 end
 
@@ -2842,7 +3029,8 @@ function Xeno.fireproximityprompt(proximityprompt: Instance, amount: number, ski
 	proximityprompt.HoldDuration = oHoldDuration
 	proximityprompt.MaxActivationDistance = oMaxDistance
 end
-function Xeno.fireclickdetector(Part: Instance) -- inspired from incog
+
+function Xeno.fireclickdetector(Part: Instance)
 	Part = ProxyService:Get(Part)
 	xRenv.assert(xRenv.typeof(Part) == "Instance", "invalid argument #1 to 'fireclickdetector' (Instance expected, got " .. xRenv.typeof(Part) .. ") ", 3)
 
@@ -2893,6 +3081,7 @@ local touchCache, ptp = {}, function(p1: Part, p2: Part, cf: CFrame, lv: boolean
 		p1.CFrame = p2.CFrame
 	end)
 end
+
 function Xeno.firetouchinterest(toucher: Part, to_touch: Part, state: number)
 	toucher = ProxyService:Get(toucher) :: Rizve -- dont worry about it
 	to_touch = ProxyService:Get(to_touch)
@@ -2957,14 +3146,31 @@ function Xeno.getrunningscripts(): {} -- thanks to razzoni for the optimization 
 	return scripts
 end
 
-function Xeno.getscripts(): {}  -- thanks to razzoni for the optimization of this function
+function Xeno.getscripts(): {}
 	local scripts = {};
 
-	for _, Descendant in Xeno.game:GetDescendants() do
+	local _corepackages = Xeno.game:GetService("CorePackages")
+	local _coregui = Xeno.game:GetService("CoreGui")
+
+	for _, Descendant: Instance in Xeno.game:GetDescendants() do
 		if Descendant.ClassName == 'LocalScript' or Descendant.ClassName == 'ModuleScript' then
+			if Descendant:IsDescendantOf(_corepackages) or Descendant:IsDescendantOf(_coregui) then
+				continue
+			end
 			table.insert(scripts, Descendant);
 		elseif Descendant.ClassName == 'Script' and Descendant.RunContext == Enum.RunContext.Client then
+			if Descendant:IsDescendantOf(_corepackages) or Descendant:IsDescendantOf(_coregui) then
+				continue
+			end
 			table.insert(scripts, Descendant);
+		end
+	end
+
+	for _, nilinstance: Instance in Xeno.getnilinstances() do
+		if nilinstance.ClassName == 'LocalScript' or nilinstance.ClassName == 'ModuleScript' then
+			table.insert(scripts, nilinstance);
+		elseif nilinstance.ClassName == 'Script' and nilinstance.RunContext == Enum.RunContext.Client then
+			table.insert(scripts, nilinstance);
 		end
 	end
 
@@ -2991,7 +3197,7 @@ function Xeno.getloadedmodules(ExcludeCore: boolean?): {}  -- thanks to razzoni 
 	end
 
 	if #loaded == 0 and loaded[1] == nil then
-		error('No modules available', 2);	
+		xRenv.error('No modules available', 2);	
 	end
 
 	xRenv.assert(#loaded ~= 0 and loaded[1] ~= nil, "No modules available", 3)
@@ -3006,37 +3212,37 @@ function Xeno.getcallingscript()
 			continue
 		end
 
-		local s = rawget(getfenv(f), "script")
+		local s = rawget(xRenv.getfenv(f), "script")
 		if s:IsA("BaseScript") then
 			return s
 		end
 	end
 end
 
--- thanks to razzoni for the improvement of getgc and getnilinstances
-
-local nilInstances = {};
-local gc = setmetatable({}, {['__mode'] = 'kv'});
+local nilInstances = setmetatable({}, {['__mode'] = 'k'});
+local gc = setmetatable({}, {['__mode'] = 'k'});
 
 task.spawn(function()
 	repeat task.wait()
-	until Xeno.game
+	until xRenv.game
 
-	Xeno.game.DescendantAdded:Connect(function(descendant)
-		table.insert(gc, descendant);
+	xRenv.game.DescendantAdded:Connect(function(descendant)
+		gc[descendant] = true
 	end)
 
-	Xeno.game.DescendantRemoving:Connect(function(descendant)
-		table.insert(nilInstances, descendant);
-		table.insert(gc, descendant);
-
-		delay(30, function() -- prevent overflow
-			local index = table.find(nilInstances, descendant)
-			if index then
-				table.remove(nilInstances, index)
-			end
-		end)
+	xRenv.game.DescendantRemoving:Connect(function(descendant)
+		nilInstances[descendant] = true
+		gc[descendant] = true
 	end)
+
+	while task.wait(300) do
+		for i in gc do
+			gc[i] = nil
+		end
+		for i in nilInstances do
+			nilInstances[i] = nil
+		end
+	end
 end)
 
 function Xeno.getinstances(): {Instance}
@@ -3046,8 +3252,8 @@ function Xeno.getinstances(): {Instance}
 		table.insert(Instances, v);
 	end;
 
-	for i,v in nilInstances do
-		table.insert(Instances, v)
+	for i in nilInstances do
+		table.insert(Instances, ProxyService:Instance(i))
 	end
 
 	return Instances
@@ -3057,16 +3263,17 @@ function Xeno.getgc(IncludeTables): {any}
 	local sys = {Xeno.Instance.new("Part")};
 
 	if IncludeTables then
-		for i,v in gc do
-			table.insert(sys, v);
+		for i in gc do
+			i = ProxyService:Instance(i)
+			table.insert(sys, i);
 		end
 	else
-		for i,v in gc do
-			if xRenv.type(v) == 'table' then
+		for i in gc do
+			i = ProxyService:Instance(i)
+			if xRenv.type(i) == 'table' then
 				continue;
 			end
-
-			table.insert(sys, v)
+			table.insert(sys, i)
 		end
 	end
 
@@ -3074,45 +3281,43 @@ function Xeno.getgc(IncludeTables): {any}
 end
 
 function Xeno.getnilinstances(): {Instance}
-	local nil_instances = {};
-
-	for i,v in Xeno.getinstances() do -- nilInstances is presented there
-		if v.Parent == nil then
-			table.insert(nil_instances, v);
-		end
+	local ni = {}
+	for i in nilInstances do
+		if xRenv.typeof(i) ~= 'Instance' or i.Parent ~= nil then continue end
+		table.insert(ni, ProxyService:Instance(i))
 	end
-
-	return nil_instances
+	return ni
 end
 
-Xeno.debug = table.clone(debug)
+Xeno.debug = xRenv.table.clone(debug)
 function Xeno.debug.getinfo(f, options)
-	if type(options) == "string" then
-		options = string.lower(options) 
-	else
-		options = "sflnu"
+	if options == nil then
+		options = "flnSu"
+	elseif xRenv.type(options) ~= 'string' then
+		xRenv.error("bad argument #2 to 'getinfo' (invalid option)")
 	end
 	local result = {}
 	for index = 1, #options do
 		local option = string.sub(options, index, index)
-		if "s" == option then
+		if "S" == option then
 			local short_src = xRenv.debug.info(f, "s")
 			result.short_src = short_src
 			result.source = "=" .. short_src
 			result.what = if short_src == "[C]" then "C" else "Lua"
+			result.linedefined = xRenv.debug.info(f, "l")
 		elseif "f" == option then
 			result.func = xRenv.debug.info(f, "f")
 		elseif "l" == option then
 			result.currentline = xRenv.debug.info(f, "l")
 		elseif "n" == option then
 			result.name = xRenv.debug.info(f, "n")
+			result.namewhat = ''
 		elseif "u" == option or option == "a" then
 			local numparams, is_vararg = xRenv.debug.info(f, "a")
 			result.numparams = numparams
+			result.isvararg = is_vararg
 			result.is_vararg = if is_vararg then 1 else 0
-			if "u" == option then
-				result.nups = -1
-			end
+			result.nups = -1
 		end
 	end
 	return result
@@ -3191,12 +3396,12 @@ export type Connection = {
 	Function: (() -> ())?,
 	Thread: thread?,
 
-	Disconnect: () -> void,
-	Disable: () -> void,
-	Enable: () -> void,
+	Disconnect: () -> (),
+	Disable: () -> (),
+	Enable: () -> (),
 
-	Fire: (...any) -> void,
-	Defer: (...any) -> void
+	Fire: (...any) -> (),
+	Defer: (...any) -> ()
 };
 
 function Xeno.getconnections(Event: RBXScriptSignal): {Connection}
@@ -3280,7 +3485,7 @@ local function ProcessInput(InputType, x, y, z)
 	RServer {
 		0,
 		'',
-		Urls.Server .. "/ip?c=" .. InputType .. concat
+		Urls.Server .. "/ip?c=" .. InputType .. concat .. '&p=' .. XENO_PID
 	}
 end
 
@@ -3320,20 +3525,12 @@ function Xeno.mousescroll(px: number)
 	ProcessInput(XInputType.mousescroll, px)
 end
 
-local blockedKeys = {
-	0x5b, -- L-WINDOWS
-	0x5c, -- R-WINDOWS
-	0x1b, -- ESC
-}
-
 function Xeno.keypress(key: number)
 	xRenv.assert(xRenv.type(tonumber(key)) == "number", "invalid argument #1 to 'keypress' (number expected, got " .. xRenv.type(key) .. ")", 3)
-	xRenv.assert(not table.find(blockedKeys, key), "Key is not allowed", 3)
 	ProcessInput(XInputType.keypress, key)
 end
 function Xeno.keyrelease(key: number)
 	xRenv.assert(xRenv.type(tonumber(key)) == "number", "invalid argument #1 to 'keyrelease' (number expected, got " .. xRenv.type(key) .. ")", 3)
-	xRenv.assert(not table.find(blockedKeys, key), "Key is not allowed", 3)
 	ProcessInput(XInputType.keyrelease, key)
 end
 
@@ -3451,6 +3648,7 @@ Xeno.rconsoleinput = Xeno.consoleinput
 -- CRYPT
 Xeno.crypt = {}
 
+
 local function ProcessBase64(content, en)
 	local result, success = RServer {
 		0,
@@ -3459,17 +3657,33 @@ local function ProcessBase64(content, en)
 	}
 
 	if not success then
-		error(result, 3)
+		xRenv.error(result, 3)
 	end
 
 	return result
 end
 
+
+--[[
+local function ProcessBase64(content, t)
+	if t == XSB4Tps.Encode then
+		return fbase64.encode(content)
+	end
+	return fbase64.decode(content)
+end
+]]
+
 Xeno.base64 = { -- add checks for if its a string?
 	encode = function(content)
+		assert(content ~= nil, "Argument 1 missing or nil")
+		xRenv.assert(xRenv.type(content) == "string", "invalid argument #1 to 'base64encode' (string expected, got " .. xRenv.type(content) .. ")", 3)
+
 		return ProcessBase64(content, XSB4Tps.Encode)
 	end,
 	decode = function(content)
+		assert(content ~= nil, "Argument 1 missing or nil")
+		xRenv.assert(xRenv.type(content) == "string", "invalid argument #1 to 'base64decode' (string expected, got " .. xRenv.type(content) .. ")", 3)
+
 		return ProcessBase64(content, XSB4Tps.Decode)
 	end,
 }
@@ -3577,7 +3791,7 @@ function Xeno.lz4compress(data: string)
 	}
 
 	if not success then
-		error(result, 3)
+		xRenv.error(result, 3)
 	end
 
 	return result
@@ -3593,7 +3807,7 @@ function Xeno.lz4decompress(data: string, size: number)
 	}
 
 	if not success then
-		error(result, 3)
+		xRenv.error(result, 3)
 	end
 
 	return result
@@ -3615,11 +3829,11 @@ function Xeno.WebSocket.connect(url: string)
 	local WSUniqueID, success = RServer {
 		0,
 		url,
-		Urls.Server .. "/ws?c=" .. WebSocketXsPTp.Connect .. "&p=" .. XENO_PID -- for closing the connections automatically
+		Urls.Server .. "/ws?c=" .. WebSocketXsPTp.Connect .. "&p=" .. XENO_PID -- pid is needed for closing the connections automatically
 	}
 
 	if not success then
-		error(WSUniqueID :: errorStr, 3)
+		xRenv.error(WSUniqueID --[[errorStr]], 3)
 	end
 
 	WSUniqueID = WSUniqueID:gsub("([^%w%-_%.~])", function(c)
@@ -3640,7 +3854,14 @@ function Xeno.WebSocket.connect(url: string)
 				'',
 				Urls.Server .. "/ws?c=" .. WebSocketXsPTp.Close .. "&u=" .. WSUniqueID
 			}
+
 			Closed = success
+
+			if Closed then
+				for Bindable : BindableFunction in Bindables.Closed do
+					Bindable:Invoke()
+				end
+			end
 		end,
 	}
 
@@ -3675,7 +3896,7 @@ function Xeno.WebSocket.connect(url: string)
 				Bindable:Destroy()
 				Bindables.Message[Bindable] = nil
 			end
-			setfenv(f, Xeno)
+			xRenv.setfenv(f, Xeno)
 
 			Bindable.OnInvoke = f
 			Bindables.Message[Bindable] = true
@@ -3725,7 +3946,7 @@ function Xeno.WebSocket.connect(url: string)
 				Bindable:Destroy()
 				Bindables.Closed[Bindable] = nil
 			end
-			setfenv(f, Xeno)
+			xRenv.setfenv(f, Xeno)
 
 			Bindable.OnInvoke = f
 			Bindables.Closed[Bindable] = true
@@ -3757,7 +3978,7 @@ function Xeno.WebSocket.connect(url: string)
 
 	task.spawn(function()
 		local errs = 0
-		while not Closed do task.wait(.01)
+		while not Closed do task.wait(.05) -- 50ms polling rate
 			local content, success, headers = RServer({
 				0,
 				'',
@@ -3794,7 +4015,7 @@ function Xeno.WebSocket.connect(url: string)
 					Bindable:Invoke()
 				end
 				Closed = true
-				error(content, 3)
+				xRenv.error(content, 3)
 			end
 
 			if status == "MSG" then -- not really needed but its better if we check
@@ -3808,7 +4029,7 @@ function Xeno.WebSocket.connect(url: string)
 	local function recur(t: {})
 		for i, v in t do
 			if xRenv.type(v) == 'function' then
-				setfenv(v, Xeno)
+				xRenv.setfenv(v, Xeno)
 				continue
 			end
 			if xRenv.type(v) == 'table' then
@@ -4409,32 +4630,32 @@ Xeno.Instance = setmetatable({}, {
 				end
 				local success, result = xRenv.pcall(xRenv.Instance.new, ClassName, Parent)
 				if not success then 
-					error(result, 3)
+					xRenv.error(result, 3)
 				end
 				if ProxyService.funcMap[result.ClassName] then
 					local success, r = xRenv.pcall(function() Xeno.game:GetService(result.ClassName) end)
 					if r then 
-						error("Multiple Services", 3)
+						xRenv.error("Multiple Services", 3)
 					end
 				end
 				return ProxyService:Instance(result, ProxyService.funcMap[result] or ProxyService.funcMap[ClassName], true)
 			end
-			setfenv(Proxied, Xeno)
+			xRenv.setfenv(Proxied, Xeno)
 			return Proxied
 		end
 		return xRenv.Instance[key]
 	end,
 	__newindex = function()
-		error("Attempt to change a protected metatable", 3)
+		xRenv.error("Attempt to change a protected metatable", 3)
 	end,
 	__metatable = "The metatable is locked"
 })
 
-getfenv().script = nil;
-getfenv().game = nil
-getfenv().Game = nil
-getfenv().workspace = nil
-getfenv().Workspace = nil
+xRenv.getfenv().script = nil;
+xRenv.getfenv().game = nil
+xRenv.getfenv().Game = nil
+xRenv.getfenv().workspace = nil
+xRenv.getfenv().Workspace = nil
 
 setmetatable(Xeno, {
 	__index = function(self, index)
@@ -4450,19 +4671,19 @@ setmetatable(Xeno, {
 
 local function sv(t) -- stack overflow possible if a value points to its holder / container so make table listing all the processed tables?
 	for i, v in t do
-		if xRenv.type(v) == "function" then
-			xRenv.pcall(setfenv, v, Xeno)
+		if Xeno.type(v) == "function" then
+			xRenv.pcall(xRenv.setfenv, v, Xeno)
 			continue
 		end
-		if xRenv.type(i) == "function" then
-			xRenv.pcall(setfenv, v, Xeno)
+		if Xeno.type(i) == "function" then
+			xRenv.pcall(xRenv.setfenv, v, Xeno)
 			continue
 		end
-		if xRenv.type(v) == "table" then
+		if Xeno.type(v) == "table" then
 			sv(v)
 			continue
 		end
-		if xRenv.type(i) == "table" then
+		if Xeno.type(i) == "table" then
 			sv(i)
 		end
 	end
@@ -4487,7 +4708,7 @@ task.spawn(function()
 	if not func then
 		error("QueueOnTeleport: " .. tostring(err), 3)
 	end
-	setfenv(func, Xeno)
+	xRenv.setfenv(func, Xeno)
 	task.spawn(func)
 end)
 ]]
@@ -4502,10 +4723,19 @@ task.spawn(function()
 	if not func then -- Should always be a success because errors are checked in the c side.
 		error("AutoExecute: " .. tostring(err), 3)
 	end
-	setfenv(func, Xeno)
+	xRenv.setfenv(func, Xeno)
 	task.spawn(func)
 end)
 ]]
+
+task.spawn(function()
+	local _Players = xRenv.game:GetService("Players")
+	local _LocalPlayer = _Players.LocalPlayer or _Players.PlayerAdded:Wait()
+	_Players.PlayerRemoving:Connect(function(player: Player)
+		if player ~= _LocalPlayer then return end
+		RServer({XFS.PlayerRemoving, ''}, true)
+	end)
+end)
 
 task.spawn(function()
 	local result = tostring(RawHttpGet(Urls.CodeExecution))
@@ -4514,60 +4744,19 @@ task.spawn(function()
 	end
 	local func, err = Xeno.loadstring(result, "XenoNotification")
 	if not func then
-		error("Xeno Notification: " .. tostring(err), 3)
+		xRenv.error("Xeno Notification: " .. tostring(err), 3)
 	end
-	setfenv(func, Xeno)
+	xRenv.setfenv(func, Xeno)
 	task.spawn(func)
-end)
-
-
-local redirectErrors, redirectOutputs;
-
-task.spawn(function()
-	while true do
-		local splt = tostring(RServer({XFS.GetXenoApplicationSettings, ""})):split(',')
-		if #splt < 2 then
-			task.wait(.5)
-			continue
-		end
-
-		redirectErrors = tonumber(splt[1]) == 1
-		redirectOutputs = tonumber(splt[2]) == 1
-
-		task.wait(.5)
-	end
-end)
-
-task.spawn(function()
-	local pWarn = function(...)
-		if redirectOutputs then
-			Xeno.rconsolewarn(...)
-		else
-			xRenv.warn(...)
-		end
-	end
-	setfenv(pWarn, Xeno)
-
-	local pPrint = function(...)
-		if redirectOutputs then
-			Xeno.rconsoleprint(...)
-		else
-			xRenv.print(...)
-		end
-	end
-	setfenv(pPrint, Xeno)
-
-	Xeno.warn = pWarn
-	Xeno.print = pPrint
 end)
 
 local function ExecutionListener()
 	local ExecutionModule = xRenv.Instance.new("ModuleScript") --xRenv.Instance.fromExisting(Modules[math.random(1, #Modules)])
 	local function regenModule()
 		if ExecutionModule then
-			xRenv.pcall(game.Destroy, ExecutionModule)
+			--xRenv.pcall(game.Destroy, ExecutionModule)
 			ExecutionModule = nil
-			xRenv.pcall(xRenv.collectgarbage, "collect")
+			--xRenv.pcall(xRenv.collectgarbage, "collect")
 		end
 		ExecutionModule = xRenv.Instance.new("ModuleScript") --xRenv.Instance.fromExisting(Modules[math.random(1, #Modules)])
 		ExecutionModule.Name = math.random(1, 9999999)
@@ -4580,35 +4769,26 @@ local function ExecutionListener()
 		local success, execFunc = xRenv.pcall(xRenv.require, ExecutionModule)
 		if success and xRenv.type(execFunc) == "function" then
 			ExecutionModule:Destroy()
-			xRenv.pcall(xRenv.collectgarbage, "collect")
-			setfenv(execFunc, {
-				getfenv = getfenv,
-				setfenv = setfenv,
+			--xRenv.pcall(xRenv.collectgarbage, "collect")
+			xRenv.setfenv(execFunc, {
+				getfenv = xRenv.getfenv,
+				setfenv = xRenv.setfenv,
 				setmetatable = setmetatable,
-				error = error,
+				error = xRenv.error,
 				Xeno = Xeno
 			})
 
-			if redirectErrors then
-				task.spawn(function()
-					local k, r = pcall(execFunc)
-					if not k then
-						Xeno.rconsoleerror(r)
-					end
-				end)
-			else
-				task.spawn(execFunc)
-			end
+			task.spawn(execFunc)
 
 			regenModule()
-			xRenv.pcall(xRenv.collectgarbage, "collect")
+			--xRenv.pcall(xRenv.collectgarbage, "collect")
 
 			continue
 		elseif success and xRenv.type(execFunc) ~= "function" then
 			ExecutionModule:Destroy()
-			xRenv.pcall(xRenv.collectgarbage, "collect")
+			--xRenv.pcall(xRenv.collectgarbage, "collect")
 			regenModule()
-			xRenv.pcall(xRenv.collectgarbage, "collect")
+			--xRenv.pcall(xRenv.collectgarbage, "collect")
 		end
 
 		task.wait(0.001)

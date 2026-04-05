@@ -2,6 +2,7 @@
     Fair Dunc Lab v4.5
     Universal UNC & Behavior Tests
     - Fake / Stub Detection
+    - Improved Xeno-style fake catching
 ]]
 
 local Players = game:GetService("Players")
@@ -78,7 +79,6 @@ local Aliases = {
     keypress = {},
     queue_on_teleport = {"queue_teleport", "queueonteleport"},
     getfpscap = {},
-    -- aliases
     ["debug.getconstant"]  = {},
     ["debug.getconstants"] = {},
     ["debug.getupvalue"]   = {},
@@ -190,8 +190,6 @@ local function testRaw(name, callback)
     end
 end
 
--- Standard Tests
-
 
 local function run_Environment()
     Lab.CurrentCategory = "Environment"
@@ -285,6 +283,7 @@ local function run_Closures()
         local ok, err = pcall(function()
             old = f(shared._dunc_dummy_func, function() return "hooked" end)
             assert(type(old) == "function", "Did not return original")
+            assert(old() == "original", "Returned function is not the original (got '" .. tostring(old()) .. "')")
             local result = shared._dunc_dummy_func()
             assert(result == "hooked", "Hook did not take effect")
         end)
@@ -293,6 +292,27 @@ local function run_Closures()
         end
         shared._dunc_dummy_func = nil
         if not ok then error(err) end
+    end)
+
+    testRaw("newcclosure stress test", function()
+        local f = resolve("newcclosure")
+        if not f then error(MISSING_SENTINEL, 0) end
+
+        local wrapped = f(function(x) return x * 2 end)
+        local isc = resolve("iscclosure")
+        if isc then assert(isc(wrapped) == true, "Not detected as C closure") end
+
+        -- Stress test: coroutine.wrap-based newcclosure can break on rapid re-calls
+        for i = 1, 50 do
+            local r = wrapped(i)
+            assert(r == i * 2, "newcclosure broke after " .. i .. " calls (got " .. tostring(r) .. ")")
+        end
+
+        -- Multi-arg and nil-return test
+        local wrapped2 = f(function(a, b, c) return a, b, c end)
+        local a, b, c = wrapped2("x", nil, "z")
+        assert(a == "x", "Multi-arg failed on arg 1")
+        assert(c == "z", "Multi-arg failed on arg 3")
     end)
 
     test("loadstring", function(f)
@@ -656,7 +676,7 @@ local function run_Debug()
         assert(info.what == "C", "print should be C")
     end)
 
-    -- Extra Debug Consistency Checks
+
     testRaw("debug.getconstant consistency", function()
         local f = resolve("debug.getconstant")
         if not f then error(MISSING_SENTINEL, 0) end
@@ -870,6 +890,18 @@ local function run_Debug()
          if cInfo.what == lInfo.what then
               error("Returns identical 'what' field ('"..tostring(cInfo.what).."') for both C and Lua functions")
          end
+
+         -- Check for nups = -1 (Xeno hardcodes this, no real impl would)
+         if lInfo.nups ~= nil and lInfo.nups < 0 then
+              error("nups is negative (" .. tostring(lInfo.nups) .. ") — likely faked")
+         end
+
+         -- Verify numparams is sensible for a known function
+         local function twoArgs(a, b) return a, b end
+         local tInfo = f(twoArgs)
+         if tInfo.numparams ~= nil and tInfo.numparams ~= 2 then
+              error("numparams wrong for 2-arg func (got " .. tostring(tInfo.numparams) .. ")")
+         end
     end)
 end
 
@@ -901,8 +933,17 @@ local function run_Metatable()
         f(t, true)
         local ir = resolve("isreadonly")
         if ir then assert(ir(t) == true, "Not set to readonly") end
+
+        -- Verify writes actually error (catches table.clone fakes)
+        local writeBlocked = not pcall(function() t._dunc_write_test = true end)
+        assert(writeBlocked, "setreadonly did not block writes (table.clone fake?)")
+
         f(t, false)
         if ir then assert(ir(t) == false, "Not set back to writable") end
+
+        -- Verify writes work again after unsetting readonly
+        local writeAllowed = pcall(function() t._dunc_write_test2 = true end)
+        assert(writeAllowed, "setreadonly(t, false) did not restore writes")
     end)
 
     test("isreadonly", function(f)
@@ -979,7 +1020,9 @@ local function run_Misc()
 
         local be = Instance.new("BindableEvent")
         local count = 0
-        local _c = be.Event:Connect(function() count += 1 end)
+        local sentinel = {}
+        local handler = function() count += 1; sentinel.invoked = true end
+        local _c = be.Event:Connect(handler)
         local conns = f(be.Event)
         
         if type(conns) ~= "table" or #conns == 0 then
@@ -996,14 +1039,48 @@ local function run_Misc()
              be:Destroy()
              error("Function field is nil for local connection (should be visible)")
         end
+
+        -- Verify the Function is our ACTUAL handler, not a dummy
+        local foundReal = false
+        for _, conn in ipairs(conns) do
+            if conn.Function == handler then
+                foundReal = true
+                break
+            end
+        end
+        if not foundReal then
+             -- Try calling the returned function to see if it's ours
+             local funcConn = conns[1].Function
+             if funcConn then
+                  sentinel.invoked = false
+                  pcall(funcConn)
+                  if not sentinel.invoked then
+                       be:Destroy()
+                       error("Function field is a dummy, not the real handler")
+                  end
+             end
+        end
         
         if conns[1].Fire then
+             count = 0
              conns[1]:Fire() 
              task.wait()
              if count == 0 then
                   warn("    [!] getconnections: Fire() did not invoke handler")
              end
         end
+
+        -- Multi-connection test: connect 3 handlers, should get at least 3 connections
+        local be2 = Instance.new("BindableEvent")
+        be2.Event:Connect(function() end)
+        be2.Event:Connect(function() end)
+        be2.Event:Connect(function() end)
+        local conns2 = f(be2.Event)
+        if #conns2 < 3 then
+             warn("    [!] getconnections: 3 connects but only " .. #conns2 .. " returned (may create dummy instead of enumerating)")
+        end
+        be2:Destroy()
+
         be:Destroy()
     end)
 
@@ -1031,7 +1108,6 @@ local function run_Misc()
             return false
         end
 
-        -- Scan constants recursively (depth-limited)
         if consts then
             local function check_f(func, depth)
                 if depth > 3 then return end
@@ -1056,7 +1132,6 @@ local function run_Misc()
             check_f(f, 0)
         end
 
-        -- Scan upvalues for URL strings
         if getupv then
             for i = 1, 10 do
                 local ok, v = pcall(getupv, f, i)
@@ -1068,23 +1143,67 @@ local function run_Misc()
             end
         end
 
-        -- Closure type hint
         local isl = resolve("islclosure")
         if isl and isl(f) then
             warn("    [!] saveinstance is an L closure (may be Lua wrapper, not native)")
+        end
+    end)
+    testRaw("getsenv check", function()
+        local f = resolve("getsenv")
+        if not f then error(MISSING_SENTINEL, 0) end
+
+        local scripts = resolve("getrunningscripts")
+        if not scripts then error("Requires getrunningscripts") end
+
+        local running = scripts()
+        if #running == 0 then error("No running scripts") end
+
+        local env = f(running[1])
+        assert(type(env) == "table", "getsenv did not return a table")
+
+        -- A real script env should have more than just 'script'
+        local keyCount = 0
+        for _ in pairs(env) do keyCount += 1 end
+        if keyCount <= 1 then
+             error("getsenv returned only " .. keyCount .. " key(s) — likely a stub ({script=Script})")
+        end
+
+        -- Check for expected globals in a real script env
+        if env.script == nil then
+             error("getsenv result missing 'script' field")
+        end
+    end)
+
+    testRaw("checkcaller context check", function()
+        local f = resolve("checkcaller")
+        if not f then error(MISSING_SENTINEL, 0) end
+
+        -- In executor context, should be true
+        assert(f() == true, "checkcaller should return true inside executor")
+
+        -- From inside a game connection, should be false
+        local be = Instance.new("BindableEvent")
+        local insideResult = nil
+        be.Event:Connect(function()
+            insideResult = f()
+        end)
+        be:Fire()
+        task.wait()
+        be:Destroy()
+
+        if insideResult ~= nil and insideResult == true then
+             warn("    [!] checkcaller returns true even inside a BindableEvent handler (likely uses debug.info source matching)")
         end
     end)
 end
 
 
 
--- Entry Point
-
 
 local function main()
     Lab.StartTime = os.clock()
     print("\n" .. string.rep("-", 40))
-    print("  Fair Dunc Lab v4.5")
+    print("  Fair Dunc Lab v4.6")
     print(string.rep("-", 40))
 
     run_Environment()
