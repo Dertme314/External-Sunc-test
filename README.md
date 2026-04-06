@@ -18,7 +18,7 @@ The goal is to stop the capped scores. We wanna see what your executor _actually
 
 ---
 
-## UNC vs sUNC (dont get scammed)
+## UNC vs sUNC (dont get them wrong)
 
 ### 1. UNC
 
@@ -42,7 +42,7 @@ We do deep checks so devs cant just spoof the results:
 
 ---
 
-## externals are hard
+## i am hard
 
 Externals have it way harder than internals and sunc is being mean to externals. You probably wont see 100% on `hookmetamethod` or `getrawmetatable` because of how they work.
 
