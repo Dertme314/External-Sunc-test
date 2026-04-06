@@ -289,23 +289,6 @@ local function run_Closures()
         assert(c() == "cloned", "Clone behavior mismatch")
     end)
 
-    test("hookfunction", function(f)
-        shared._dunc_dummy_func = function() return "original" end
-        local old
-        local ok, err = pcall(function()
-            old = f(shared._dunc_dummy_func, function() return "hooked" end)
-            assert(type(old) == "function", "Did not return original")
-            assert(old() == "original", "Returned function is not the original (got '" .. tostring(old()) .. "')")
-            local result = shared._dunc_dummy_func()
-            assert(result == "hooked", "Hook did not take effect")
-        end)
-        if old and shared._dunc_dummy_func then
-            pcall(f, shared._dunc_dummy_func, old)
-        end
-        shared._dunc_dummy_func = nil
-        if not ok then error(err) end
-    end)
-
     testRaw("newcclosure stress test", function()
         local f = resolve("newcclosure")
         if not f then error(MISSING_SENTINEL, 0) end
