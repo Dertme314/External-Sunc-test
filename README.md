@@ -1,9 +1,32 @@
 # fair sunc test (dunc lab)
-# how to use 
+
+# how to use
 
 join this game [FairDunc](https://www.roblox.com/games/100895822450075/FairDunc)
 
-execute this script ```loadstring(game:HttpGet("https://raw.githubusercontent.com/Dertme314/External-Sunc-test/refs/heads/main/fairsunc.lua"))()```
+execute this script `loadstring(game:HttpGet("https://raw.githubusercontent.com/Dertme314/External-Sunc-test/refs/heads/main/fairsunc.lua"))()`
+
+usage example of the script
+
+```lua
+-- All ON by default (run automatically)
+getgenv().Environment    = true/false
+getgenv().Closures       = true/false
+getgenv().FileSystem     = true/false
+getgenv().Network        = true/false
+getgenv().Input          = true/false
+getgenv().LabInteraction = true/false
+getgenv().Crypt          = true/false
+getgenv().Drawing        = true/false
+getgenv().Console        = true/false
+getgenv().Metatable      = true/false
+getgenv().Thread         = true/false
+getgenv().Misc           = true/false
+
+-- OFF by default (must enable manually)
+getgenv().Debug          = true/false
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Dertme314/External-Sunc-test/refs/heads/main/fairsunc.lua"))()
+```
 
 see your results
 
