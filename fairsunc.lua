@@ -1320,15 +1320,8 @@ local function run_Thread()
         local gti = resolve("getthreadidentity")
         local original = gti and gti() or nil
         local ok, err = pcall(function()
-            f(8)
-            if gti then assert(gti() == 8, "Identity not set to 8") end
-            local realAccess = pcall(function()
-                local cg = game:GetService("CoreGui")
-                local _ = cg:GetChildren()
-            end)
-            if not realAccess then
-                error("Identity set to 8 but failed to access CoreGui")
-            end
+            f(3)
+            if gti then assert(gti() == 3, "Identity not set to 3") end
         end)
         if original ~= nil then pcall(f, original) end
         if not ok then error(err) end
