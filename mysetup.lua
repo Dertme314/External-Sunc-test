@@ -1,5 +1,5 @@
 --[[
-    Fair Dunc Lab v4.5
+    Fair Dunc Lab v4.6
     Setup script
 ]]
 
@@ -17,6 +17,8 @@ cleanInstance(workspace, "FairDuncLab")
 cleanInstance(SSS, "LabServerHandler")
 cleanInstance(StarterGui, "DuncScoreGui")
 cleanInstance(ReStorage, "DUNC_GetToken")
+cleanInstance(ReStorage, "DUNC_VerifyAnswers")
+cleanInstance(game:GetService("StarterPlayer").StarterPlayerScripts, "DuncVerifyProbe")
 cleanInstance(ReStorage, "DUNC_Verifier")
 
 -- map
@@ -85,7 +87,107 @@ local touchPart = makeTestPart("TouchTestPart", Vector3.new(0, 2, 10))
 touchPart.CanTouch = true
 addBillboard(touchPart, "Touch Interest Test")
 
+-- virtual input
+local keypressPart = makeTestPart("KeypressTestPart", Vector3.new(-10, 2, 10))
+addBillboard(keypressPart, "Virtual Keypress Test")
+
+local mousePart = makeTestPart("MouseTestPart", Vector3.new(10, 2, -10))
+addBillboard(mousePart, "Virtual Mouse Test")
+
 -- helper
+
+local localInputScript = Instance.new("LocalScript")
+localInputScript.Name = "DuncInputVerifier"
+localInputScript.Source = [==[
+local UIS = game:GetService("UserInputService")
+local lab = workspace:WaitForChild("FairDuncLab")
+
+local keyPart = lab:WaitForChild("KeypressTestPart")
+local mousePart = lab:WaitForChild("MouseTestPart")
+
+local function flashColor(part, color)
+    part.BrickColor = BrickColor.new(color)
+    task.wait(1)
+    part.BrickColor = BrickColor.new("Medium stone grey")
+end
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if input.KeyCode == Enum.KeyCode.Return then
+        flashColor(keyPart, "Bright blue")
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+        flashColor(mousePart, "Bright red")
+    end
+end)
+]==]
+localInputScript.Parent = game:GetService("StarterPlayer").StarterPlayerScripts
+
+-- Verification probe script
+-- This LocalScript has KNOWN sentinel values baked in so the test can verify
+-- that debug.getconstants / debug.getupvalue / getsenv / getconnections
+-- actually read real game data instead of returning faked results.
+
+local probeScript = Instance.new("LocalScript")
+probeScript.Name = "DuncVerifyProbe"
+probeScript.Source = [==[
+-- Sentinel constants (the test will look for these via debug.getconstants)
+local DUNC_SENTINEL_ALPHA = "DUNC_PROBE_7f3a9x"
+local DUNC_SENTINEL_NUM   = 8675309
+local DUNC_SENTINEL_BETA  = "DUNC_PROBE_k2m8q1"
+
+-- Sentinel upvalues (the test will look for these via debug.getupvalue)
+local _probeUpvalA = "DUNC_UPVAL_r4z9w2"
+local _probeUpvalB = 1337707
+
+-- Exported function with known constants inside it
+local function DuncProbeFunction()
+    local _x = "DUNC_INNER_CONST_p8v3"
+    local _y = 424242
+    return DUNC_SENTINEL_ALPHA, DUNC_SENTINEL_NUM
+end
+
+-- Second function for cross-checking (different constants)
+local function DuncProbeFunction2()
+    local _a = "DUNC_INNER_CONST_j7k1"
+    local _b = 999111
+    return DUNC_SENTINEL_BETA, _probeUpvalB
+end
+
+-- Connection sentinel: connect to a BindableEvent so getconnections can find it
+local probeBindable = Instance.new("BindableEvent")
+probeBindable.Name = "DuncProbeEvent"
+probeBindable.Parent = game:GetService("ReplicatedStorage")
+
+local DUNC_CONN_SENTINEL = "DUNC_CONN_PROOF_x9f2"
+local _connProof = DUNC_CONN_SENTINEL
+
+local function DuncProbeHandler()
+    return _connProof
+end
+
+probeBindable.Event:Connect(DuncProbeHandler)
+
+-- Put functions in environment so getsenv can find them
+DuncProbeFunction = DuncProbeFunction
+DuncProbeFunction2 = DuncProbeFunction2
+_G.DUNC_PROBE_LOADED = true
+
+-- Heartbeat connection with known sentinel (for getconnections on RunService)
+local RS = game:GetService("RunService")
+local DUNC_HEARTBEAT_MARKER = "DUNC_HB_m3v7"
+local _hbMarker = DUNC_HEARTBEAT_MARKER
+local _hbCount = 0
+
+local function DuncHeartbeatProbe(dt)
+    _hbCount = _hbCount + 1
+    if _hbCount > 999999 then _hbCount = 0 end
+    local _ = _hbMarker
+end
+
+RS.Heartbeat:Connect(DuncHeartbeatProbe)
+
+print("[Fair Dunc Lab] Probe script loaded")
+]==]
+probeScript.Parent = game:GetService("StarterPlayer").StarterPlayerScripts
 
 local serverScript = Instance.new("Script")
 serverScript.Name = "LabServerHandler"
@@ -106,6 +208,60 @@ getToken.OnServerInvoke = function(player)
         playerTokens[player] = HttpService:GenerateGUID(false)
     end
     return playerTokens[player]
+end
+
+-- Verify Answers RemoteFunction
+-- Returns the correct sentinel values so the test can cross-check
+-- what the executor returned vs what the game actually has
+local verifyAnswers = Instance.new("RemoteFunction")
+verifyAnswers.Name = "DUNC_VerifyAnswers"
+verifyAnswers.Parent = ReStorage
+
+verifyAnswers.OnServerInvoke = function(player, query)
+    if type(query) ~= "string" then return nil end
+
+    if query == "probe_constants" then
+        -- These MUST match what's in DuncVerifyProbe's DuncProbeFunction
+        return {
+            "DUNC_INNER_CONST_p8v3",
+            424242,
+            "DUNC_PROBE_7f3a9x",
+            8675309
+        }
+    elseif query == "probe_constants2" then
+        -- Match DuncProbeFunction2
+        return {
+            "DUNC_INNER_CONST_j7k1",
+            999111,
+            "DUNC_PROBE_k2m8q1",
+            1337707
+        }
+    elseif query == "probe_upvals" then
+        -- DuncProbeFunction captures these as upvalues
+        return {
+            "DUNC_PROBE_7f3a9x",
+            8675309
+        }
+    elseif query == "probe_upvals2" then
+        return {
+            "DUNC_PROBE_k2m8q1",
+            1337707
+        }
+    elseif query == "probe_script_name" then
+        return "DuncVerifyProbe"
+    elseif query == "probe_env_keys" then
+        -- Keys the probe script exposes in its senv
+        return {"DuncProbeFunction", "DuncProbeFunction2"}
+    elseif query == "probe_conn_sentinel" then
+        -- The connection handler returns this value
+        return "DUNC_CONN_PROOF_x9f2"
+    elseif query == "probe_heartbeat_marker" then
+        return "DUNC_HB_m3v7"
+    elseif query == "probe_bindable_name" then
+        return "DuncProbeEvent"
+    end
+
+    return nil
 end
 
 -- Remote
@@ -205,7 +361,7 @@ Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
 local title = Instance.new("TextLabel")
 title.Name = "Title"
-title.Text = "FAIR DUNC LAB v4.5"
+title.Text = "FAIR DUNC LAB v4.6"
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundTransparency = 1
 title.TextColor3 = Color3.fromRGB(0, 255, 170)
@@ -241,6 +397,6 @@ stroke.Thickness = 2
 stroke.Color = Color3.fromRGB(50, 50, 60)
 stroke.Parent = frame
 
-print("[Fair Dunc Lab v4.5] Setup complete")
+print("[Fair Dunc Lab v4.6] Setup complete")
 print("  1. Press F5")
 print("  2. Run fairsunc.lua in your executor")

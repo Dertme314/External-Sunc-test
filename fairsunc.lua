@@ -15,6 +15,24 @@ local CONFIG = {
     CLEANUP         = true,
 }
 
+local env = (type(getgenv) == "function" and getgenv()) or _G
+
+local TOGGLES = {
+    Environment    = env.Environment ~= false,
+    Closures       = env.Closures ~= false,
+    FileSystem     = env.FileSystem ~= false,
+    Network        = env.Network ~= false,
+    Input          = env.Input ~= false,
+    LabInteraction = env.LabInteraction ~= false,
+    Crypt          = env.Crypt ~= false,
+    Drawing        = env.Drawing ~= false,
+    Debug          = env.Debug == true,
+    Console        = env.Console ~= false,
+    Metatable      = env.Metatable ~= false,
+    Thread         = env.Thread ~= false,
+    Misc           = env.Misc ~= false,
+}
+
 local Lab = {
     Passed = 0, Failed = 0, Missing = 0, Total = 0,
     Results = {}, StartTime = 0,
@@ -437,14 +455,34 @@ local function run_Input()
     print("\n Input")
 
     test("keypress", function(f)
+        local lab = workspace:FindFirstChild("FairDuncLab")
+        local part = lab and lab:FindFirstChild("KeypressTestPart")
         local kr = resolve("keyrelease")
-        f(0x41)
-        task.wait(0.05)
-        if kr then kr(0x41) end
+        local t0 = os.clock()
+        
+        f(0x0D) -- VK_RETURN
+        if kr then task.wait(0.05) kr(0x0D) end
+        
+        if part then
+            repeat task.wait() until part.BrickColor == BrickColor.new("Bright blue") or os.clock() - t0 > 1.5
+            assert(part.BrickColor == BrickColor.new("Bright blue"), "Executor faked result: Game Engine (UIS) did not physically detect the keypress")
+        end
     end)
 
-    test("keyrelease", function(f) f(0x41) end)
-    test("mouse1click", function(f) f() end)
+    test("keyrelease", function(f) f(0x0D) end)
+    
+    test("mouse1click", function(f)
+        local lab = workspace:FindFirstChild("FairDuncLab")
+        local part = lab and lab:FindFirstChild("MouseTestPart")
+        local t0 = os.clock()
+
+        f()
+
+        if part then
+            repeat task.wait() until part.BrickColor == BrickColor.new("Bright red") or os.clock() - t0 > 1.5
+            assert(part.BrickColor == BrickColor.new("Bright red"), "Executor faked result: Game Engine (UIS) did not physically detect the mouse click")
+        end
+    end)
 
     test("mouse1press", function(f)
         local mr = resolve("mouse1release")
@@ -895,6 +933,350 @@ local function run_Debug()
               error("numparams wrong for 2-arg func (got " .. tostring(tInfo.numparams) .. ")")
          end
     end)
+
+    testRaw("debug.getconstants on script func", function()
+        local gsenv = resolve("getsenv")
+        local grs = resolve("getrunningscripts")
+        local gc = resolve("debug.getconstants")
+        if not gsenv or not grs or not gc then error(MISSING_SENTINEL, 0) end
+
+        local scripts = grs()
+        local targetFunc = nil
+        local targetName = nil
+
+        for _, s in ipairs(scripts) do
+            local ok, senv = pcall(gsenv, s)
+            if ok and type(senv) == "table" then
+                for k, v in pairs(senv) do
+                    if type(v) == "function" and k ~= "script" then
+                        targetFunc = v
+                        targetName = s.Name .. "." .. tostring(k)
+                        break
+                    end
+                end
+            end
+            if targetFunc then break end
+        end
+
+        if not targetFunc then error("No script functions found via getsenv") end
+
+        local ok, consts = pcall(gc, targetFunc)
+        assert(ok, "debug.getconstants crashed on " .. targetName .. ": " .. tostring(consts))
+        assert(type(consts) == "table", "did not return table for " .. targetName)
+    end)
+
+    testRaw("debug.getupvalue on script func", function()
+        local gsenv = resolve("getsenv")
+        local grs = resolve("getrunningscripts")
+        local guv = resolve("debug.getupvalue")
+        if not gsenv or not grs or not guv then error(MISSING_SENTINEL, 0) end
+
+        local scripts = grs()
+        local targetFunc = nil
+        local targetName = nil
+
+        for _, s in ipairs(scripts) do
+            local ok, senv = pcall(gsenv, s)
+            if ok and type(senv) == "table" then
+                for k, v in pairs(senv) do
+                    if type(v) == "function" and k ~= "script" then
+                        targetFunc = v
+                        targetName = s.Name .. "." .. tostring(k)
+                        break
+                    end
+                end
+            end
+            if targetFunc then break end
+        end
+
+        if not targetFunc then error("No script functions found via getsenv") end
+
+        local ok, val = pcall(guv, targetFunc, 1)
+        assert(ok, "debug.getupvalue crashed on " .. targetName .. ": " .. tostring(val))
+    end)
+
+    testRaw("debug on connections", function()
+        local gconn = resolve("getconnections")
+        local gc = resolve("debug.getconstants")
+        if not gconn or not gc then error(MISSING_SENTINEL, 0) end
+
+        local rs = game:GetService("RunService")
+        local conns = gconn(rs.Heartbeat)
+
+        if #conns == 0 then error("No Heartbeat connections found") end
+
+        local tested = false
+        for _, conn in ipairs(conns) do
+            if conn.Function then
+                local ok, consts = pcall(gc, conn.Function)
+                if ok and type(consts) == "table" then
+                    tested = true
+                    break
+                end
+            end
+        end
+
+        assert(tested, "debug.getconstants failed on all Heartbeat connection functions")
+    end)
+
+    local function getVerifyAnswers(query)
+        local rf = ReStorage:FindFirstChild("DUNC_VerifyAnswers")
+        if not rf then return nil end
+        local ok, result = pcall(function() return rf:InvokeServer(query) end)
+        if ok then return result end
+        return nil
+    end
+
+    local function findProbeScript()
+        local grs = resolve("getrunningscripts")
+        if not grs then return nil end
+        local scripts = grs()
+        for _, s in ipairs(scripts) do
+            if s.Name == "DuncVerifyProbe" then return s end
+        end
+        return nil
+    end
+
+    testRaw("⚙ server-verified: debug.getconstants", function()
+        local gc = resolve("debug.getconstants")
+        local gsenv = resolve("getsenv")
+        local grs = resolve("getrunningscripts")
+        if not gc or not gsenv or not grs then error(MISSING_SENTINEL, 0) end
+
+        local probe = findProbeScript()
+        if not probe then error("DuncVerifyProbe script not found via getrunningscripts") end
+
+        local env = gsenv(probe)
+        if type(env) ~= "table" then error("getsenv returned non-table for probe") end
+
+        local func = env.DuncProbeFunction
+        if not func then error("DuncProbeFunction not found in probe senv") end
+
+        local ok, consts = pcall(gc, func)
+        if not ok then error("debug.getconstants crashed on probe func: " .. tostring(consts)) end
+        assert(type(consts) == "table", "did not return table")
+
+        -- Get the correct answers from the server
+        local expected = getVerifyAnswers("probe_constants")
+        if not expected then error("Server verify answers unavailable") end
+
+        -- Check that at least one expected sentinel is present
+        local matchCount = 0
+        for _, exp in ipairs(expected) do
+            for _, got in ipairs(consts) do
+                if got == exp then matchCount = matchCount + 1 break end
+            end
+        end
+
+        assert(matchCount >= 2,
+            "Only matched " .. matchCount .. "/" .. #expected ..
+            " server-known constants — likely faked or hardcoded")
+    end)
+
+    testRaw("⚙ server-verified: debug.getconstants (func2)", function()
+        local gc = resolve("debug.getconstants")
+        local gsenv = resolve("getsenv")
+        if not gc or not gsenv then error(MISSING_SENTINEL, 0) end
+
+        local probe = findProbeScript()
+        if not probe then error("DuncVerifyProbe not running") end
+
+        local env = gsenv(probe)
+        local func = env and env.DuncProbeFunction2
+        if not func then error("DuncProbeFunction2 not found in probe senv") end
+
+        local ok, consts = pcall(gc, func)
+        if not ok then error("Crashed: " .. tostring(consts)) end
+
+        local expected = getVerifyAnswers("probe_constants2")
+        if not expected then error("Server answers unavailable") end
+
+        -- Cross-check: func2 has DIFFERENT constants than func1
+        local expected1 = getVerifyAnswers("probe_constants")
+        if expected1 then
+            local wrongMatch = 0
+            for _, e1 in ipairs(expected1) do
+                for _, got in ipairs(consts) do
+                    if got == e1 then wrongMatch = wrongMatch + 1 end
+                end
+            end
+            -- If func2 returns func1's constants, they're just returning the same thing for everything
+            if wrongMatch >= 2 then
+                error("Returns same constants for different functions — faked")
+            end
+        end
+
+        local matchCount = 0
+        for _, exp in ipairs(expected) do
+            for _, got in ipairs(consts) do
+                if got == exp then matchCount = matchCount + 1 break end
+            end
+        end
+
+        assert(matchCount >= 2,
+            "Only matched " .. matchCount .. "/" .. #expected ..
+            " expected constants for func2")
+    end)
+
+    testRaw("⚙ server-verified: debug.getupvalue", function()
+        local guv = resolve("debug.getupvalue")
+        local gsenv = resolve("getsenv")
+        if not guv or not gsenv then error(MISSING_SENTINEL, 0) end
+
+        local probe = findProbeScript()
+        if not probe then error("DuncVerifyProbe not running") end
+
+        local env = gsenv(probe)
+        local func = env and env.DuncProbeFunction
+        if not func then error("DuncProbeFunction not in senv") end
+
+        local expected = getVerifyAnswers("probe_upvals")
+        if not expected then error("Server answers unavailable") end
+
+        -- Try first few upvalue slots
+        local foundAny = false
+        for i = 1, 5 do
+            local ok, val = pcall(guv, func, i)
+            if ok and val ~= nil then
+                for _, exp in ipairs(expected) do
+                    if val == exp then foundAny = true break end
+                end
+            end
+            if foundAny then break end
+        end
+
+        assert(foundAny,
+            "None of the upvalues matched server-known sentinels — likely returns nil/faked")
+    end)
+
+    testRaw("⚙ server-verified: getsenv", function()
+        local gsenv = resolve("getsenv")
+        if not gsenv then error(MISSING_SENTINEL, 0) end
+
+        local probe = findProbeScript()
+        if not probe then error("DuncVerifyProbe not running") end
+
+        local env = gsenv(probe)
+        assert(type(env) == "table", "getsenv returned " .. type(env))
+
+        local expectedKeys = getVerifyAnswers("probe_env_keys")
+        if not expectedKeys then error("Server answers unavailable") end
+
+        -- Verify the known function names exist in the environment
+        local foundKeys = 0
+        for _, key in ipairs(expectedKeys) do
+            if env[key] ~= nil then
+                foundKeys = foundKeys + 1
+                assert(type(env[key]) == "function",
+                    "'" .. key .. "' exists but is " .. type(env[key]) .. ", not function")
+            end
+        end
+
+        assert(foundKeys >= 2,
+            "Only found " .. foundKeys .. "/" .. #expectedKeys ..
+            " expected keys in probe senv — likely stub")
+
+        if env.DuncProbeFunction then
+            local ok, a, b = pcall(env.DuncProbeFunction)
+            if ok then
+                local upvals = getVerifyAnswers("probe_upvals")
+                if upvals and a ~= upvals[1] then
+                    error("DuncProbeFunction returned '" .. tostring(a) ..
+                        "' but server expected '" .. tostring(upvals[1]) .. "'")
+                end
+            end
+        end
+    end)
+
+    testRaw("⚙ server-verified: getconnections (probe event)", function()
+        local gconn = resolve("getconnections")
+        if not gconn then error(MISSING_SENTINEL, 0) end
+
+        local bindableName = getVerifyAnswers("probe_bindable_name")
+        if not bindableName then error("Server answers unavailable") end
+
+        local bindable = ReStorage:FindFirstChild(bindableName)
+        if not bindable then error("Probe BindableEvent '" .. bindableName .. "' not found") end
+
+        local conns = gconn(bindable.Event)
+        assert(type(conns) == "table", "getconnections returned " .. type(conns))
+        assert(#conns > 0, "No connections found on probe event")
+
+        -- Verify the connection has a real Function field
+        local hasRealFunc = false
+        local connSentinel = getVerifyAnswers("probe_conn_sentinel")
+
+        for _, conn in ipairs(conns) do
+            if conn.Function then
+                local ok, result = pcall(conn.Function)
+                if ok and result == connSentinel then
+                    hasRealFunc = true
+                    break
+                end
+                if type(conn.Function) == "function" then
+                    hasRealFunc = true
+                end
+            end
+        end
+
+        assert(hasRealFunc,
+            "getconnections returned connections but Function field is nil/dummy — faked")
+    end)
+
+    testRaw("⚙ server-verified: getconnections (heartbeat)", function()
+        local gconn = resolve("getconnections")
+        local gc = resolve("debug.getconstants")
+        if not gconn or not gc then error(MISSING_SENTINEL, 0) end
+
+        local hbMarker = getVerifyAnswers("probe_heartbeat_marker")
+        if not hbMarker then error("Server answers unavailable") end
+
+        local rs = game:GetService("RunService")
+        local conns = gconn(rs.Heartbeat)
+
+        local foundProbe = false
+        for _, conn in ipairs(conns) do
+            if conn.Function then
+                local ok, consts = pcall(gc, conn.Function)
+                if ok and type(consts) == "table" then
+                    for _, c in ipairs(consts) do
+                        if c == hbMarker then
+                            foundProbe = true
+                            break
+                        end
+                    end
+                end
+            end
+            if foundProbe then break end
+        end
+
+        assert(foundProbe,
+            "Could not find probe heartbeat connection with marker '" .. hbMarker ..
+            "' — getconnections or debug.getconstants is faked")
+    end)
+
+    testRaw("⚙ server-verified: getrunningscripts", function()
+        local grs = resolve("getrunningscripts")
+        if not grs then error(MISSING_SENTINEL, 0) end
+
+        local expectedName = getVerifyAnswers("probe_script_name")
+        if not expectedName then error("Server answers unavailable") end
+
+        local scripts = grs()
+        assert(type(scripts) == "table", "not a table")
+
+        local found = false
+        for _, s in ipairs(scripts) do
+            if typeof(s) == "Instance" and s.Name == expectedName then
+                found = true
+                break
+            end
+        end
+
+        assert(found,
+            "DuncVerifyProbe ('" .. expectedName ..
+            "') not found in getrunningscripts results — may be incomplete or faked")
+    end)
 end
 
 local function run_Console()
@@ -1039,7 +1421,6 @@ local function run_Misc()
             end
         end
         if not foundReal then
-             -- call the returned function to see if its mine
              local funcConn = conns[1].Function
              if funcConn then
                   sentinel.invoked = false
@@ -1157,7 +1538,6 @@ local function run_Misc()
              error("getsenv returned only " .. keyCount .. " key(s) — likely a stub ({script=Script})")
         end
 
-        -- check for expected globals in a real script env
         if env.script == nil then
              error("getsenv result missing 'script' field")
         end
@@ -1167,10 +1547,8 @@ local function run_Misc()
         local f = resolve("checkcaller")
         if not f then error(MISSING_SENTINEL, 0) end
 
-        -- In executor context, should be true
         assert(f() == true, "checkcaller should return true inside executor")
 
-        -- From inside a game connection, should be false
         local be = Instance.new("BindableEvent")
         local insideResult = nil
         be.Event:Connect(function()
@@ -1195,19 +1573,19 @@ local function main()
     print("  Fair Dunc Lab v4.6")
     print(string.rep("-", 40))
 
-    run_Environment()
-    run_Closures()
-    run_FileSystem()
-    run_Network()
-    run_Input()
-    run_LabInteraction()
-    run_Crypt()
-    run_Drawing()
-    run_Debug()
-    run_Console()
-    run_Metatable()
-    run_Thread()
-    run_Misc()
+    if TOGGLES.Environment then run_Environment() end
+    if TOGGLES.Closures then run_Closures() end
+    if TOGGLES.FileSystem then run_FileSystem() end
+    if TOGGLES.Network then run_Network() end
+    if TOGGLES.Input then run_Input() end
+    if TOGGLES.LabInteraction then run_LabInteraction() end
+    if TOGGLES.Crypt then run_Crypt() end
+    if TOGGLES.Drawing then run_Drawing() end
+    if TOGGLES.Debug then run_Debug() end
+    if TOGGLES.Console then run_Console() end
+    if TOGGLES.Metatable then run_Metatable() end
+    if TOGGLES.Thread then run_Thread() end
+    if TOGGLES.Misc then run_Misc() end
 
     local elapsed = string.format("%.2fs", os.clock() - Lab.StartTime)
     local score = Lab.Total > 0 and math.floor((Lab.Passed / Lab.Total) * 100) or 0
