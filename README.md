@@ -1,4 +1,8 @@
 # fair sunc test (dunc lab)
+# how to use 
+join this game [FairDunc](https://www.roblox.com/games/100895822450075/FairDunc)
+execute this script ```loadstring(game:HttpGet("https://raw.githubusercontent.com/Dertme314/External-Sunc-test/refs/heads/main/fairsunc.lua"))()```
+see your results
 
 ## what is this?
 
