@@ -2,7 +2,7 @@
 
 # how to use
 
-join this game [FairDunc](https://www.roblox.com/games/100895822450075/FairDunc)
+join this game [FairDunc](https://www.roblox.com/games/100895822450075/FairDunc) (you can also setup the game urself in setup)
 
 execute this script `loadstring(game:HttpGet("https://raw.githubusercontent.com/Dertme314/External-Sunc-test/refs/heads/main/fairsunc.lua"))()`
 
