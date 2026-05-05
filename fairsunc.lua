@@ -10,7 +10,7 @@ local CONFIG = {
     TEST_FILE       = "_dunc_lab_test.txt",
     TEST_FILE_2     = "_dunc_lab_append.txt",
     LIST_FOLDER     = "_dunc_lab_test_list",
-    HTTP_URL        = "https://httpbin.org/get",
+    HTTP_URL        = "https://api.ipify.org?format=json",
     LAB_WAIT        = 0.6,
     CLEANUP         = true,
 }
